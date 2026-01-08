@@ -416,17 +416,32 @@ export default function BiGridConfig({ availableColumns, config, onChange }: BiG
                 <div className="space-y-1 min-h-[40px]">
                   {localConfig.values.map((metric, idx) => {
                     const activeField = activeId ? String(activeId).split('::')[1] : null;
+                    // Determine if we should show insert-before placeholder for external drag
+                    const overIsColumnsItem = overId === `columns::${metric.id}`;
+                    const draggingFromAll = activeId ? String(activeId).startsWith('allColumns::') : false;
+                    const insertBefore = overIsColumnsItem && draggingFromAll;
+
                     return (
-                      <SortableMetricChip
-                        key={`columns::${metric.id}`}
-                        id={`columns::${metric.id}`}
-                        metric={metric}
-                        onRemove={() => removeFromColumns(metric.id)}
-                        onChangeAggregation={(agg) => changeAggregation(metric.id, agg)}
-                        forceGhost={activeField === metric.field}
-                      />
+                      <div key={`wrap-columns-${metric.id}`}>
+                        {insertBefore && (
+                          <div className="h-3 bg-gray-700 rounded mt-0 mb-1 mx-1 border border-dashed border-gray-600" />
+                        )}
+                        <SortableMetricChip
+                          key={`columns::${metric.id}`}
+                          id={`columns::${metric.id}`}
+                          metric={metric}
+                          onRemove={() => removeFromColumns(metric.id)}
+                          onChangeAggregation={(agg) => changeAggregation(metric.id, agg)}
+                          forceGhost={activeField === metric.field}
+                        />
+                      </div>
                     );
                   })}
+
+                  {/* If dragging from All Columns onto empty Columns droppable, show end placeholder */}
+                  {activeId && String(activeId).startsWith('allColumns::') && overId === 'droppable-columns' && (
+                    <div className="h-8 bg-gray-700 rounded my-1 mx-1 border border-dashed border-gray-600" />
+                  )}
                   {localConfig.values.length === 0 && (
                     <div className="text-gray-500 italic px-2 py-1 text-[10px]">
                       Drag fields here
