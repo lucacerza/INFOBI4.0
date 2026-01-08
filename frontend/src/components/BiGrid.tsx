@@ -647,6 +647,99 @@ export default function BiGrid({
     );
   }, [pivotResult, expandedRows]);
 
+  // Auto-resize columns: compute optimal widths based on header and sample data
+  useEffect(() => {
+    if (!pivotResult) return;
+
+    // Create canvas for text measurement
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    // Match default font used in app (tailwind base)
+    ctx.font = '14px Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial';
+
+    const measureText = (text: string) => {
+      try {
+        return Math.ceil(ctx.measureText(String(text || '')).width);
+      } catch (e) {
+        return 80;
+      }
+    };
+
+    const flatCols: ColumnDef[] = flattenColumns(pivotResult.columns || []);
+
+    // Sample up to N rows for content width
+    const sampleRows = (pivotResult.data || []).slice(0, 200);
+
+    const updatedCols = flatCols.map(col => {
+      // Header width
+      const headerW = measureText(col.header) + 24; // padding
+
+      if (col.meta?.isTreeColumn) {
+        // Tree column: account for indentation and expand button
+        const indentPerLevel = 12;
+        const maxDepth = (pivotResult.grouping || []).length || 1;
+        // compute longest value among grouping fields
+        let maxText = 0;
+        sampleRows.forEach(r => {
+          (pivotResult.grouping || []).forEach(g => {
+            maxText = Math.max(maxText, String(r[g] || '').length);
+          });
+        });
+        const textW = maxText * 7; // approximate char width
+        const calc = Math.max(160, Math.min(600, textW + (maxDepth * indentPerLevel) + 60));
+        return { ...col, size: Math.max(calc, headerW) };
+      }
+
+      // For data columns, measure a few sample values to determine width
+      let maxContentW = 0;
+      sampleRows.forEach(r => {
+        const v = r[col.accessorKey || ''];
+        const formatted = (col.meta?.isNumber && typeof v === 'number') ? v.toLocaleString() : (v || '');
+        maxContentW = Math.max(maxContentW, measureText(formatted));
+      });
+
+      // Minimum/maximum constraints
+      const minW = 80;
+      const maxW = 400;
+      const contentW = Math.max(minW, Math.min(maxW, maxContentW + 24));
+
+      const newSize = Math.max(headerW, contentW);
+      return { ...col, size: newSize };
+    });
+
+    // Rebuild hierarchical columns with updated sizes
+    function rebuildWithSizes(cols: ColumnDef[]): ColumnDef[] {
+      return cols.map(c => {
+        if (c.columns && c.columns.length > 0) {
+          const children = rebuildWithSizes(c.columns);
+          const total = children.reduce((s, ch) => s + ch.size, 0);
+          return { ...c, columns: children, size: total };
+        }
+        const leaf = updatedCols.find(u => u.accessorKey === c.accessorKey && u.header === c.header);
+        return leaf ? { ...c, size: leaf.size } : c;
+      });
+    }
+
+    const newColumns = rebuildWithSizes(pivotResult.columns || []);
+
+    // Compare sizes to avoid unnecessary state updates
+    let changed = false;
+    const oldFlat = flattenColumns(pivotResult.columns || []);
+    const newFlat = flattenColumns(newColumns);
+    if (oldFlat.length === newFlat.length) {
+      for (let i = 0; i < oldFlat.length; i++) {
+        if (oldFlat[i].size !== newFlat[i].size) { changed = true; break; }
+      }
+    } else {
+      changed = true;
+    }
+
+    if (changed) {
+      setPivotResult({ ...pivotResult, columns: newColumns });
+    }
+  }, [pivotResult]);
+
   return (
     <div className={`flex flex-col h-full ${className}`}>
       {/* Stats Bar (minimal) */}
