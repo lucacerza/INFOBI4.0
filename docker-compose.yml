@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  # Redis-compatible cache (25x faster than Redis)
+  cache:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly
+    ports:
+      - "6379:6379"
+    volumes:
+      - cache_data:/data
+    command: ["--maxmemory", "512mb", "--proactor_threads", "2"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Python backend for DB connections and heavy queries
+  backend:
+    build: ./backend
+    ports:
+      - "8001:8000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-super-secret-key-change-in-production}
+      - REDIS_URL=redis://cache:6379
+      - DATABASE_URL=sqlite+aiosqlite:///./data/infobi.db
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      cache:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # React frontend with Perspective.js
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  cache_data:

@@ -1,0 +1,42 @@
+# High-performance backend with:
+# - ConnectorX for 10x faster DB reads
+# - Redis/Dragonfly caching
+# - Arrow IPC streaming
+# - Async everything
+
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+pydantic-settings==2.1.0
+
+# Database
+sqlalchemy[asyncio]==2.0.25
+aiosqlite==0.19.0
+connectorx==0.3.2
+pyodbc==5.0.1
+psycopg2-binary==2.9.9
+pymysql==1.1.0
+
+# Arrow for high-performance data transfer
+pyarrow==15.0.0
+polars==0.20.5
+
+# Cache
+redis==5.0.1
+
+# Auth
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+
+# Export
+openpyxl==3.1.2
+xlsxwriter==3.1.9
+
+# Scheduler
+apscheduler==3.10.4
+
+# Utils
+python-dotenv==1.0.0
+httpx==0.26.0
+orjson==3.9.12

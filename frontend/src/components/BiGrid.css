@@ -1,0 +1,195 @@
+/* BiGrid Styles - Perfect Column Alignment Pattern (Perspective.js style) */
+
+.bigrid-table {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  font-size: 12px; /* Slightly larger for readability */
+  font-family: 'Roboto Mono', 'Consolas', 'Monaco', monospace; /* Perspective uses monospace */
+  position: relative;
+  background: #fafafa; /* Light background like Perspective */
+}
+
+/* HEADER - CRITICAL FOR ALIGNMENT */
+.bigrid-header {
+  background: #fff; /* Clean white background like Perspective */
+  border-bottom: 2px solid #e0e0e0; /* Subtle border */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05); /* Subtle shadow */
+}
+
+.bigrid-header-row {
+  display: flex;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.bigrid-header-row:last-child {
+  border-bottom: none;
+}
+
+/* HEADER CELL - FLEXBOX ALIGNMENT (BiGrid pattern) */
+.bigrid-header-cell {
+  padding: 8px 12px; /* More padding like Perspective */
+  font-weight: 500; /* Medium weight */
+  font-size: 11px; /* Readable size */
+  color: #666; /* Lighter text color like Perspective */
+  border-right: 1px solid #e0e0e0;
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-transform: uppercase; /* Uppercase headers like Perspective */
+  letter-spacing: 0.5px;
+}
+
+.bigrid-header-cell:last-child {
+  border-right: none;
+}
+
+.bigrid-header-cell.col-group {
+  background-color: #f8f8f8; /* Subtle group background */
+  font-weight: 600;
+  color: #444;
+}
+
+.bigrid-header-cell.tree-col {
+  background-color: #f8f8f8;
+  font-weight: 600;
+  color: #444;
+  justify-content: flex-start;
+  position: sticky;
+  left: 0;
+  z-index: 20; /* Above normal headers */
+  border-right: 2px solid #ddd; /* Stronger border for sticky column */
+}
+
+.bigrid-header-cell.text-right {
+  justify-content: flex-end;
+}
+
+.bigrid-header-cell:hover {
+  background-color: #ececec;
+}
+
+/* TABLE BODY - Scrolls vertically only (headers stay fixed) */
+.bigrid-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden; /* No horizontal scroll on body - handled by wrapper */
+}
+
+.bigrid-row {
+  display: flex;
+  border-bottom: 1px solid #f0f0f0; /* Lighter borders like Perspective */
+}
+
+.bigrid-row:hover {
+  background-color: #f5f7fa; /* Subtle blue-gray hover like Perspective */
+}
+
+.bigrid-row.group-row {
+  background: #fafafa; /* Subtle background for groups */
+  font-weight: 600;
+  /* Removed blue border as requested */
+}
+
+.bigrid-row.group-row:hover {
+  background: #f0f4f8; /* Slightly darker on hover */
+}
+
+/* Sticky tree column in group rows needs proper background */
+.bigrid-row.group-row .bigrid-cell.tree-col {
+  background: #fafafa;
+}
+
+.bigrid-row.group-row:hover .bigrid-cell.tree-col {
+  background: #f0f4f8;
+}
+
+/* TABLE CELL - FLEXBOX ALIGNMENT (BiGrid pattern) */
+.bigrid-cell {
+  padding: 8px 12px; /* More padding like Perspective */
+  border-right: 1px solid #f0f0f0; /* Lighter borders */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: #333; /* Darker text for readability */
+}
+
+.bigrid-cell:last-child {
+  border-right: none;
+}
+
+.bigrid-cell.text-right {
+  justify-content: flex-end;
+  text-align: right;
+  font-variant-numeric: tabular-nums; /* Monospace numbers for alignment */
+}
+
+.bigrid-cell.tree-col {
+  justify-content: flex-start;
+  position: sticky;
+  left: 0;
+  z-index: 5; /* Above normal cells but below headers */
+  background: white; /* Prevent see-through when scrolling */
+  border-right: 2px solid #ddd; /* Stronger border for sticky column */
+  font-weight: 500;
+}
+
+/* Ensure sticky column background updates on row hover */
+.bigrid-row:hover .bigrid-cell.tree-col {
+  background: #f5f7fa; /* Match row hover color */
+}
+
+/* Expand/Collapse Button */
+.expand-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 12px;
+  color: #667eea;
+  border-radius: 3px;
+  transition: background-color 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+}
+
+.expand-btn:hover {
+  background-color: rgba(102, 126, 234, 0.1);
+}
+
+.group-value {
+  font-weight: 600;
+  color: #333;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}
