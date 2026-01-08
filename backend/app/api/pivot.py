@@ -275,49 +275,54 @@ async def execute_pivot_with_split(
 
     # Pivot with multi-level column hierarchy if split_by is present
     if split_by:
-        # Multi-level pivot: Create hierarchical column paths
-        if len(split_by) > 1:
-            df = df.with_columns([
-                pl.concat_str([pl.col(dim) for dim in split_by], separator="|").alias("_column_path")
-            ])
-            pivot_column = "_column_path"
+        # If no group_by, we cannot pivot (need at least one index column)
+        if not group_by or len(group_by) == 0:
+            logger.warning("⚠️ Cannot pivot with split_by when group_by is empty. Returning aggregated data without pivot.")
+            result_df = df
         else:
-            pivot_column = split_by[0]
+            # Multi-level pivot: Create hierarchical column paths
+            if len(split_by) > 1:
+                df = df.with_columns([
+                    pl.concat_str([pl.col(dim) for dim in split_by], separator="|").alias("_column_path")
+                ])
+                pivot_column = "_column_path"
+            else:
+                pivot_column = split_by[0]
 
-        pivot_index = group_by
-        logger.info(f"📊 Pivoting with aggregation, index={pivot_index}, column={pivot_column}")
+            pivot_index = group_by
+            logger.info(f"📊 Pivoting with aggregation, index={pivot_index}, column={pivot_column}")
 
-        result_df = None
-        for metric_name in metric_names:
-            logger.info(f"   Pivoting '{metric_name}' with aggregation 'sum'")
+            result_df = None
+            for metric_name in metric_names:
+                logger.info(f"   Pivoting '{metric_name}' with aggregation 'sum'")
 
-            pivoted = df.pivot(
-                values=metric_name,
-                index=pivot_index,
-                columns=pivot_column,
-                aggregate_function='sum'
-            )
+                pivoted = df.pivot(
+                    values=metric_name,
+                    index=pivot_index,
+                    columns=pivot_column,
+                    aggregate_function='sum'
+                )
 
-            # Rename pivoted columns to include metric name
-            rename_map = {}
-            for col_name in pivoted.columns:
-                if col_name not in pivot_index:
-                    rename_map[col_name] = f"{col_name}|{metric_name}"
+                # Rename pivoted columns to include metric name
+                rename_map = {}
+                for col_name in pivoted.columns:
+                    if col_name not in pivot_index:
+                        rename_map[col_name] = f"{col_name}|{metric_name}"
 
-            if rename_map:
-                pivoted = pivoted.rename(rename_map)
+                if rename_map:
+                    pivoted = pivoted.rename(rename_map)
+
+                if result_df is None:
+                    result_df = pivoted
+                else:
+                    new_cols = [col for col in pivoted.columns if col not in pivot_index]
+                    result_df = result_df.join(pivoted, on=pivot_index, how="outer", suffix="_DROP")
+                    drop_cols = [col for col in result_df.columns if col.endswith("_DROP")]
+                    if drop_cols:
+                        result_df = result_df.drop(drop_cols)
 
             if result_df is None:
-                result_df = pivoted
-            else:
-                new_cols = [col for col in pivoted.columns if col not in pivot_index]
-                result_df = result_df.join(pivoted, on=pivot_index, how="outer", suffix="_DROP")
-                drop_cols = [col for col in result_df.columns if col.endswith("_DROP")]
-                if drop_cols:
-                    result_df = result_df.drop(drop_cols)
-
-        if result_df is None:
-            result_df = df
+                result_df = df
     else:
         # No split_by: just return aggregated data
         result_df = df
@@ -519,3 +524,146 @@ async def load_pivot_config(
     except Exception as e:
         logger.error(f"Error loading pivot config: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{report_id}/lazy")
+async def execute_lazy_pivot(
+    report_id: int,
+    request: EnhancedPivotRequest,
+    depth: int = 0,
+    parent_filters: dict = {},
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user)
+):
+    """
+    Lazy loading endpoint for hierarchical pivot data.
+    
+    Returns only the requested level of grouping:
+    - depth=0: Load root level (first group_by dimension)
+    - depth=1: Load second level (requires parent_filters)
+    
+    Example:
+    1. Initial: depth=0 → 50 categories
+    2. Expand "Electronics": depth=1, parent_filters={"Category": "Electronics"} → subcategories
+    """
+    import pyarrow.ipc as ipc
+    from io import BytesIO
+    
+    start_time = time.perf_counter()
+    
+    # Get report and connection
+    result = await db.execute(
+        select(Report, Connection)
+        .join(Connection, Report.connection_id == Connection.id)
+        .where(Report.id == report_id)
+    )
+    row = result.one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    report, connection = row
+    
+    # Validate depth
+    if depth >= len(request.group_by):
+        raise HTTPException(status_code=400, detail=f"Invalid depth {depth}")
+    
+    # Build connection string
+    conn_string = QueryEngine.build_connection_string(
+        connection.db_type,
+        {
+            "host": connection.host,
+            "port": connection.port,
+            "database": connection.database,
+            "username": connection.username,
+            "password": decrypt_password(connection.password_encrypted)
+        }
+    )
+    
+    # Group by ONLY current level
+    current_dimension = request.group_by[depth]
+    combined_filters = {**request.filters, **parent_filters}
+    
+    # Execute query for this level only
+    arrow_bytes, row_count, query_time = await QueryEngine.execute_pivot(
+        conn_string,
+        report.query,
+        [current_dimension],
+        [m.model_dump() for m in request.metrics],
+        combined_filters,
+        None
+    )
+    
+    elapsed = (time.perf_counter() - start_time) * 1000
+    logger.info(f"Lazy level {depth} for report {report_id}: {row_count} rows in {elapsed:.1f}ms")
+    
+    return Response(
+        content=arrow_bytes,
+        media_type="application/vnd.apache.arrow.stream",
+        headers={
+            "X-Row-Count": str(row_count),
+            "X-Query-Time": f"{elapsed:.1f}",
+            "X-Depth": str(depth)
+        }
+    )
+
+
+@router.post("/{report_id}/grand-total")
+async def get_grand_total(
+    report_id: int,
+    request: EnhancedPivotRequest,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user)
+):
+    """
+    Get grand total (no grouping, aggregate everything).
+    Used for total row in lazy loading.
+    """
+    import pyarrow.ipc as ipc
+    from io import BytesIO
+    
+    start_time = time.perf_counter()
+    
+    # Get report and connection
+    result = await db.execute(
+        select(Report, Connection)
+        .join(Connection, Report.connection_id == Connection.id)
+        .where(Report.id == report_id)
+    )
+    row = result.one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Report not found")
+    
+    report, connection = row
+    
+    # Build connection string
+    conn_string = QueryEngine.build_connection_string(
+        connection.db_type,
+        {
+            "host": connection.host,
+            "port": connection.port,
+            "database": connection.database,
+            "username": connection.username,
+            "password": decrypt_password(connection.password_encrypted)
+        }
+    )
+    
+    # Execute with NO grouping
+    arrow_bytes, row_count, query_time = await QueryEngine.execute_pivot(
+        conn_string,
+        report.query,
+        [],  # No group by = grand total
+        [m.model_dump() for m in request.metrics],
+        request.filters,
+        None
+    )
+    
+    elapsed = (time.perf_counter() - start_time) * 1000
+    
+    return Response(
+        content=arrow_bytes,
+        media_type="application/vnd.apache.arrow.stream",
+        headers={
+            "X-Row-Count": str(row_count),
+            "X-Query-Time": f"{elapsed:.1f}"
+        }
+    )
