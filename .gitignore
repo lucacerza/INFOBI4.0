@@ -96,3 +96,7 @@ coverage/
 # OS
 Thumbs.db
 Desktop.ini
+ 
+# Local temp / comparison artifacts
+.claude/
+Tempinfobi5_comparison/
