@@ -645,6 +645,60 @@ export default function BiGrid({
       expandedRows,
       toggleRow
     );
+
+    // After rendering, adjust DOM widths to ensure headers and cells align
+    // This forces visible auto-resize immediately without relying on state updates
+    const adjustWidths = () => {
+      try {
+        const root = containerRef.current!;
+        const headerCells = Array.from(root.querySelectorAll('.bigrid-header .bigrid-header-cell')) as HTMLElement[];
+        const bodyRows = Array.from(root.querySelectorAll('.bigrid-body .bigrid-row')) as HTMLElement[];
+
+        if (!headerCells.length || !bodyRows.length) return;
+
+        // For each header cell index, compute max width between header and first N visible rows
+        const sampleCount = Math.min(20, bodyRows.length);
+
+        headerCells.forEach((hCell, colIdx) => {
+          let maxW = 0;
+          // measure header text
+          const hdrRect = hCell.getBoundingClientRect();
+          maxW = Math.max(maxW, hdrRect.width);
+
+          // measure sample cells in this column
+          for (let r = 0; r < sampleCount; r++) {
+            const row = bodyRows[r];
+            if (!row) continue;
+            const cells = Array.from(row.querySelectorAll(':scope > .bigrid-cell, :scope > .bigrid-cell.tree-col')) as HTMLElement[];
+            const cell = cells[colIdx];
+            if (!cell) continue;
+            const rect = cell.getBoundingClientRect();
+            maxW = Math.max(maxW, rect.width);
+          }
+
+          // add small padding
+          const finalW = Math.ceil(maxW) + 24;
+
+          // apply to header and all body cells in column
+          hCell.style.width = `${finalW}px`;
+          hCell.style.flex = `0 0 ${finalW}px`;
+
+          bodyRows.forEach(row => {
+            const cells = Array.from(row.querySelectorAll(':scope > .bigrid-cell, :scope > .bigrid-cell.tree-col')) as HTMLElement[];
+            const cell = cells[colIdx];
+            if (cell) {
+              cell.style.width = `${finalW}px`;
+              cell.style.flex = `0 0 ${finalW}px`;
+            }
+          });
+        });
+      } catch (e) {
+        console.warn('adjustWidths failed', e);
+      }
+    };
+
+    // Delay slightly to allow DOM to paint
+    setTimeout(adjustWidths, 30);
   }, [pivotResult, expandedRows]);
 
   // Auto-resize columns: compute optimal widths based on header and sample data

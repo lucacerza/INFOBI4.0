@@ -700,7 +700,7 @@ function SortableFieldRow({
     >
       <span className={`text-[10px] font-mono ${typeColor} w-3`}>{typeIcon}</span>
       <span className="flex-1 truncate text-[11px]">{column.label || column.name}</span>
-      {/* no aggregation selector here - All Columns should look like chips but without select */}
+      <div style={{ width: 44 }} />
     </div>
   );
 }
