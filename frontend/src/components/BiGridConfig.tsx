@@ -152,12 +152,16 @@ export default function BiGridConfig({ availableColumns, config, onChange }: BiG
     
     const activeIdStr = String(active.id);
     const overIdStr = String(over.id);
+
+    const [activeZoneRaw, activeField] = activeIdStr.split('::');
+    let [overZoneRaw, overField] = overIdStr.split('::');
+
+    // Normalize droppable-* ids used for empty-zone drops
+    const activeZone = activeZoneRaw.startsWith('droppable-') ? activeZoneRaw.replace('droppable-', '') : activeZoneRaw;
+    const overZone = overZoneRaw && overZoneRaw.startsWith('droppable-') ? overZoneRaw.replace('droppable-', '') : overZoneRaw;
     
-    const [activeZone, activeField] = activeIdStr.split('::');
-    const [overZone, overField] = overIdStr.split('::');
-    
-    // Don't do anything if same item or same zone (SortableContext handles it)
-    if (activeIdStr === overIdStr || activeZone === overZone) return;
+    // Don't do anything if same item
+    if (activeIdStr === overIdStr) return;
     
     // Optimistic reordering between different zones (like INFOBI5.0)
     // Update LOCAL state only - no commit to parent until drop
@@ -194,6 +198,7 @@ export default function BiGridConfig({ availableColumns, config, onChange }: BiG
           aggregation
         };
         const newValues = [...localConfig.values];
+        // If overField is an item id, find its index; if overField is empty (droppable target), insert at end
         const insertIndex = overField ? newValues.findIndex(v => v.id === overField) : newValues.length;
         newValues.splice(insertIndex >= 0 ? insertIndex : newValues.length, 0, newMetric);
         setLocalConfig({ ...localConfig, values: newValues });
@@ -691,12 +696,11 @@ function SortableFieldRow({
       style={style}
       {...attributes}
       {...listeners}
-      className="flex items-center gap-1 px-2 py-0.5 hover:bg-gray-800 rounded cursor-grab active:cursor-grabbing"
+      className="flex items-center gap-1 px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-600 cursor-grab active:cursor-grabbing"
     >
       <span className={`text-[10px] font-mono ${typeColor} w-3`}>{typeIcon}</span>
-      <span className="flex-1 truncate text-[11px]">
-        {column.label || column.name}
-      </span>
+      <span className="flex-1 truncate text-[11px]">{column.label || column.name}</span>
+      {/* no aggregation selector here - All Columns should look like chips but without select */}
     </div>
   );
 }
