@@ -136,6 +136,36 @@ class PivotRequest(BaseModel):
     filters: Dict[str, Any] = {}
     sort: Optional[List[Dict[str, str]]] = None
 
+# --- NEW MODELS FOR LAZY LOADING ---
+
+class SortModel(BaseModel):
+    colId: str
+    sort: str  # 'asc' or 'desc'
+
+class FilterDef(BaseModel):
+    filterType: str = 'text'
+    type: str  # 'contains', 'equals', 'startsWith', etc
+    filter: Any         # Can be string or number
+
+class GridRequest(BaseModel):
+    startRow: int
+    endRow: int
+    sortModel: List[SortModel] = []
+    filterModel: Dict[str, FilterDef] = {}
+
+class ValueCol(BaseModel):
+    colId: str
+    aggFunc: str = 'sum'
+
+class PivotDrillRequest(BaseModel):
+    rowGroupCols: List[str]
+    groupKeys: List[Any]  # Values of the parent nodes
+    valueCols: List[ValueCol]
+    pivotCols: List[str] = []
+    filterModel: Dict[str, FilterDef] = {}
+    startRow: Optional[int] = 0
+    endRow: Optional[int] = 100
+
 # Dashboard
 class WidgetPosition(BaseModel):
     x: int

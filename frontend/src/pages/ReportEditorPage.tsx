@@ -12,6 +12,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Save, Loader2, Play, CheckCircle, XCircle, AlertCircle, Settings, Eye } from 'lucide-react';
 import BiGrid from '../components/BiGrid';
 import BiGridConfig from '../components/BiGridConfig';
+import TreeDataGrid from '../components/TreeDataGrid';
 
 interface ColumnInfo {
   name: string;
@@ -27,9 +28,9 @@ interface MetricConfig {
 }
 
 interface PivotConfig {
-  rows: string[];
-  columns: string[];
-  values: MetricConfig[];
+  rows: string[];        // groupBy
+  columns: string[];     // splitBy
+  values: MetricConfig[]; // metrics
 }
 
 export default function ReportEditorPage() {
@@ -315,25 +316,18 @@ export default function ReportEditorPage() {
           {/* Config Sidebar */}
           <BiGridConfig
             availableColumns={schema.columns}
-            config={pivotConfig}
-            onChange={handleConfigChange}
+            config={pivotConfig as any}
+            onChange={handleConfigChange as any}
           />
 
           {/* Preview Grid (LIMIT 100 rows) */}
           <div className="flex-1 flex flex-col overflow-hidden">
             <div className="flex-1">
-              <BiGrid
-                reportId={parseInt(id)}
-                defaultGroupBy={pivotConfig.rows}
-                defaultSplitBy={pivotConfig.columns}
-                defaultMetrics={pivotConfig.values.map(v => ({
-                  name: v.name,
-                  field: v.field,
-                  type: 'sum',
-                  aggregation: v.aggregation
-                }))}
-                previewMode={true}
-                className="flex-1"
+              <TreeDataGrid
+                reportId={parseInt(id!)}
+                rowGroups={pivotConfig.rows || []}
+                valueCols={pivotConfig.values || []}
+                pivotCols={pivotConfig.columns || []}
               />
             </div>
           </div>

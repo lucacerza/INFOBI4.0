@@ -1,758 +1,458 @@
-/**
- * BiGridConfig - Pivot Configuration Sidebar (IDENTICAL TO PERSPECTIVE.JS)
- *
- * Layout matches Perspective.js EXACTLY:
- * - Group By (row dimensions)
- * - Split By (column dimensions - multi-level!)
- * - Where (filters)
- * - Columns (metrics/aggregations)
- * - All Columns (available fields)
- * 
- * Enhanced with @dnd-kit for smooth animations
- */
-import React, { useState, useEffect } from 'react';
-import { X, ChevronDown, ChevronRight, GripVertical } from 'lucide-react';
-import {
-  DndContext,
-  DragEndEvent,
-  DragStartEvent,
-  DragOverlay,
-  useSensor,
-  useSensors,
-  PointerSensor,
-  KeyboardSensor,
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { Box, Sigma, ArrowRight, GripVertical, X } from 'lucide-react';
+import { 
+  DndContext, 
+  DragOverlay, 
+  DragStartEvent, 
+  DragEndEvent, 
+  DragOverEvent, 
+  useSensor, 
+  useSensors, 
+  PointerSensor, 
+  useDroppable,
   closestCenter,
-  DragOverEvent,
-  useDroppable
+  KeyboardSensor
 } from '@dnd-kit/core';
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  useSortable,
-  arrayMove
+import { 
+  SortableContext, 
+  verticalListSortingStrategy, 
+  useSortable, 
+  arrayMove,
+  sortableKeyboardCoordinates
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-interface ColumnInfo {
-  name: string;
-  type: 'string' | 'number' | 'date';
+export interface BiGridMetric {
+  id: string;
+  field: string;
+  aggregation: 'sum' | 'avg' | 'count' | 'min' | 'max';
   label?: string;
 }
 
-interface MetricConfig {
-  id: string;
-  name: string;
-  field: string;
-  aggregation: 'SUM' | 'AVG' | 'COUNT' | 'MIN' | 'MAX';
-}
-
-interface PivotConfig {
-  rows: string[];
-  columns: string[];
-  values: MetricConfig[];
+export interface BiGridConfigData {
+  rows?: string[];
+  columns?: string[];
+  values?: BiGridMetric[];
 }
 
 interface BiGridConfigProps {
-  availableColumns: ColumnInfo[];
-  config: PivotConfig;
-  onChange: (config: PivotConfig) => void;
+  config: BiGridConfigData;
+  availableColumns: string[] | { name: string }[];
+  onChange: (config: BiGridConfigData) => void;
 }
 
-export default function BiGridConfig({ availableColumns, config, onChange }: BiGridConfigProps) {
-  // Local state for optimistic UI during drag
-  const [localConfig, setLocalConfig] = useState<PivotConfig>(config);
+// --- DRAG & DROP COMPONENTS ---
+
+function SortableItem({ id, children, onRemove, onAggregationChange, aggregation, isAvailableList }: any) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+    
+    // Use rigid transform to prevent blurring/distortion
+    const style = {
+        transform: CSS.Translate.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        zIndex: isDragging ? 999 : 'auto',
+    };
+
+    return (
+        <div ref={setNodeRef} style={style} 
+             className={`
+                flex items-center justify-between px-2 py-1 mb-1 
+                ${isAvailableList ? 'bg-transparent hover:bg-[#404040] border-transparent' : 'bg-[#404040] border-[#555]'} 
+                border rounded cursor-move select-none text-xs text-gray-200 group
+             `}
+        >
+            <div className="flex items-center gap-2 truncate flex-1" {...attributes} {...listeners}>
+                <GripVertical size={12} className="text-gray-500 flex-shrink-0" />
+                <span className="truncate font-sans">{children}</span>
+            </div>
+            
+            <div className="flex items-center gap-1">
+                {onAggregationChange && (
+                    <select 
+                        value={aggregation || 'sum'} 
+                        onChange={(e) => { e.stopPropagation(); onAggregationChange(e.target.value); }}
+                        onClick={(e) => e.stopPropagation()} 
+                        onPointerDown={(e) => e.stopPropagation()} 
+                        className="text-[10px] px-1 py-0.5 border border-[#555] rounded bg-[#2b2b2b] text-gray-300 focus:outline-none focus:border-blue-500"
+                    >
+                        <option value="sum">sum</option>
+                        <option value="avg">avg</option>
+                        <option value="count">cnt</option>
+                        <option value="min">min</option>
+                        <option value="max">max</option>
+                    </select>
+                )}
+                
+                {onRemove && (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); onRemove(id); }} 
+                      className="p-1 hover:bg-[#555] rounded text-gray-400 hover:text-red-400"
+                    >
+                       <X size={12}/>
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function DroppableContainer({ id, items, title, onRemoveItem, onAggregationChange, placeholder, metricsMeta, isAvailableList, hasGroups }: any) {
+    const { setNodeRef } = useDroppable({ id });
+
+    const renderedItems = items.map((itemId: string) => {
+        const meta = metricsMeta ? metricsMeta[itemId] : null;
+        const aggregation = meta ? meta.aggregation : null;
+        
+        // Show aggregation select only if we have groups (user request) OR if explicitly enabled
+        // Actually, user said: "Selects in columns make sense only if at least one field in Group By"
+        // So we pass 'hasGroups' to SortableItem or handled here.
+        // If hasGroups is false, and this is 'values' container (which has onAggregationChange), hide select?
+        const showAgg = onAggregationChange && hasGroups;
+
+        return (
+            <SortableItem 
+                key={itemId} 
+                id={itemId} 
+                onRemove={onRemoveItem}
+                onAggregationChange={showAgg ? (val: string) => onAggregationChange(itemId, val) : null}
+                aggregation={aggregation}
+                isAvailableList={isAvailableList}
+            >
+               {itemId} 
+            </SortableItem> 
+        );
+    });
+
+    if (isAvailableList) {
+        return (
+            <SortableContext id={id} items={items} strategy={verticalListSortingStrategy}>
+                <div ref={setNodeRef} className="flex-1 p-2 min-h-[50px]">
+                    {renderedItems}
+                </div>
+            </SortableContext>
+        );
+    }
+
+    return (
+        <div className="mb-4">
+             {title && (
+                <div className="mb-1 text-[10px] font-bold text-gray-400 uppercase tracking-wide flex items-center justify-between">
+                    <span>{title}</span>
+                </div>
+             )}
+            <div ref={setNodeRef} className="bg-[#1e1e1e] rounded border border-[#333] min-h-[38px] p-1.5 shadow-inner">
+                <SortableContext id={id} items={items} strategy={verticalListSortingStrategy}>
+                    <div className="flex flex-col gap-0.5">
+                        {renderedItems}
+                        {items.length === 0 && (
+                             <div className="h-6" /> // spacer for drop target
+                        )}
+                    </div>
+                </SortableContext>
+            </div>
+        </div>
+    );
+}
+
+export default function BiGridConfig({ config, availableColumns, onChange }: BiGridConfigProps) {
+  // Map column names to types for intelligent defaulting
+  const columnTypes = useMemo(() => {
+    const types: Record<string, string> = {};
+    availableColumns.forEach((c: any) => {
+        if (typeof c !== 'string' && c.name) {
+            types[c.name] = c.type; // 'string', 'number', 'date', etc.
+        }
+    });
+    return types;
+  }, [availableColumns]);
+
+  // --- STATE ---
+  // Pure string arrays for robust DndKit operation
+  const [items, setItems] = useState<{
+      available: string[];
+      rows: string[];
+      columns: string[];
+      values: string[];
+  }>({
+      available: [],
+      rows: [],
+      columns: [],
+      values: []
+  });
+
+  // Metadata for metrics (aggregation types)
+  const [metricsMeta, setMetricsMeta] = useState<Record<string, { aggregation: string }>>({});
+
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [activeZone, setActiveZone] = useState<'groupBy' | 'splitBy' | 'columns' | 'allColumns' | null>(null);
-  const [activeOperation, setActiveOperation] = useState<MetricConfig['aggregation'] | null>(null);
-  const [overId, setOverId] = useState<string | null>(null);
+  
+  // Track if we are currently dragging to avoid updates during drag
+  const isDraggingRef = useRef(false);
 
-  // Sync local state when parent config changes (from external updates)
+  // --- INITIALIZATION ---
   useEffect(() => {
-    setLocalConfig(config);
-  }, [config]);
+    // Only re-init if meaningful changes occur. 
+    // We parse 'availableColumns' into strings.
+    const colNames = availableColumns.map((c: any) => typeof c === 'string' ? c : c.name);
+    
+    // Parse incoming config
+    const currentRows = config.rows || [];
+    const currentColumns = config.columns || [];
+    const currentValues = config.values || [];
+    
+    // Extract value IDs and metadata
+    const valueIds = currentValues.map(v => v.field);
+    const newMetricsMeta: Record<string, { aggregation: string }> = {};
+    
+    currentValues.forEach(v => {
+        newMetricsMeta[v.field] = { aggregation: v.aggregation };
+    });
+    setMetricsMeta(prev => ({ ...prev, ...newMetricsMeta }));
 
+    const used = new Set([
+        ...currentRows,
+        ...currentColumns,
+        ...valueIds
+    ]);
+    
+    const available = colNames.filter((c: string) => !used.has(c));
+    
+    setItems({
+        available,
+        rows: currentRows,
+        columns: currentColumns,
+        values: valueIds
+    });
+  }, [availableColumns]); // Breaking dependency loops: don't depend on 'config' here, only init on mount or cols change
+
+  // --- SYNC TO PARENT ---
+  // Debounce could be added here if needed, but we'll sync on every change for responsiveness
+  useEffect(() => {
+    if (isDraggingRef.current) return; // Don't sync while dragging
+    
+    // Reconstruct complex object for parent
+    const complexValues: BiGridMetric[] = items.values.map(id => {
+        // Determine Default Aggregation if not set
+        let agg = metricsMeta[id]?.aggregation;
+        if (!agg) {
+            const type = columnTypes[id];
+            // If numeric, default to SUM. Else default to COUNT
+            agg = (type === 'number' || type === 'float' || type === 'integer') ? 'sum' : 'count';
+        }
+        
+        return {
+            id,
+            field: id,
+            aggregation: agg as any
+        };
+    });
+    
+    // Only trigger if changes are real (comparisons logic omitted for simplicity, relying on parent dup check if any)
+    onChange({
+        rows: items.rows,
+        columns: items.columns,
+        values: complexValues
+    });
+
+  }, [items.rows, items.columns, items.values, metricsMeta, columnTypes]);
+
+
+  // --- DND HANDLERS ---
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8, // 8px movement to start drag
-      },
-    }),
-    useSensor(KeyboardSensor)
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), 
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const addToGroupBy = (field: string) => {
-    if (!config.rows.includes(field)) {
-      onChange({ ...config, rows: [...config.rows, field] });
-    }
+  const findContainer = (id: string) => {
+    if (items.available.includes(id)) return 'available';
+    if (items.rows.includes(id)) return 'rows';
+    if (items.columns.includes(id)) return 'columns';
+    if (items.values.includes(id)) return 'values';
+    return null;
   };
 
-  const addToSplitBy = (field: string) => {
-    if (!config.columns.includes(field)) {
-      onChange({ ...config, columns: [...config.columns, field] });
-    }
-  };
-
-  const addToColumns = (field: string, customAggregation?: MetricConfig['aggregation']) => {
-    // Use custom aggregation from menu if provided, otherwise use type-based default
-    let aggregation: MetricConfig['aggregation'];
-
-    if (customAggregation) {
-      aggregation = customAggregation;
-    } else {
-      const col = availableColumns.find(c => c.name === field);
-      aggregation = (col?.type === 'number') ? 'SUM' : 'MAX';
-    }
-
-    const newMetric: MetricConfig = {
-      id: `${field}-${Date.now()}`,
-      name: field,
-      field: field,
-      aggregation: aggregation
-    };
-    onChange({ ...config, values: [...config.values, newMetric] });
-  };
-
-  const removeFromGroupBy = (field: string) => {
-    onChange({ ...config, rows: config.rows.filter(r => r !== field) });
-  };
-
-  const removeFromSplitBy = (field: string) => {
-    onChange({ ...config, columns: config.columns.filter(c => c !== field) });
-  };
-
-  const removeFromColumns = (id: string) => {
-    onChange({ ...config, values: config.values.filter(v => v.id !== id) });
-  };
-
-  const changeAggregation = (id: string, agg: MetricConfig['aggregation']) => {
-    onChange({
-      ...config,
-      values: config.values.map(v => v.id === id ? { ...v, aggregation: agg } : v)
-    });
-  };
-
-  // @dnd-kit handlers
   const handleDragStart = (event: DragStartEvent) => {
-    const { active } = event;
-    // Store full ID for visibility debugging
-    setActiveId(String(active.id));
-    
-    // Parse zone for logic usage if needed (though logic uses event.active)
-    const parts = String(active.id).split('::');
-    if (parts.length === 2) {
-      setActiveZone(parts[0] as any);
-    }
+    setActiveId(event.active.id as string);
+    isDraggingRef.current = true;
   };
 
   const handleDragOver = (event: DragOverEvent) => {
-    const { active, over } = event;
-    if (!over) return;
-    
-    setOverId(String(over.id));
-    
-    const activeIdStr = String(active.id);
-    const overIdStr = String(over.id);
+      const { active, over } = event;
+      if (!over) return;
+      
+      const activeContainer = findContainer(active.id as string);
+      // If over a container directly (e.g. empty placeholder) use its id, else find the item's container
+      const overContainer = (over.id in items) 
+          ? over.id 
+          : findContainer(over.id as string);
 
-    const [activeZoneRaw, activeField] = activeIdStr.split('::');
-    let [overZoneRaw, overField] = overIdStr.split('::');
+      if (!activeContainer || !overContainer || activeContainer === overContainer) {
+          return;
+      }
 
-    // Normalize droppable-* ids used for empty-zone drops
-    const activeZone = activeZoneRaw.startsWith('droppable-') ? activeZoneRaw.replace('droppable-', '') : activeZoneRaw;
-    const overZone = overZoneRaw && overZoneRaw.startsWith('droppable-') ? overZoneRaw.replace('droppable-', '') : overZoneRaw;
-    
-    // Don't do anything if same item
-    if (activeIdStr === overIdStr) return;
-    
-    // Optimistic reordering between different zones (like INFOBI5.0)
-    // Update LOCAL state only - no commit to parent until drop
-    
-    // Moving from allColumns to groupBy
-    if (activeZone === 'allColumns' && overZone === 'groupBy') {
-      const newRows = [...localConfig.rows];
-      if (!newRows.includes(activeField)) {
-        const insertIndex = overField ? newRows.indexOf(overField) : newRows.length;
-        newRows.splice(insertIndex >= 0 ? insertIndex : newRows.length, 0, activeField);
-        setLocalConfig({ ...localConfig, rows: newRows });
-      }
-    }
-    
-    // Moving from allColumns to splitBy
-    else if (activeZone === 'allColumns' && overZone === 'splitBy') {
-      const newCols = [...localConfig.columns];
-      if (!newCols.includes(activeField)) {
-        const insertIndex = overField ? newCols.indexOf(overField) : newCols.length;
-        newCols.splice(insertIndex >= 0 ? insertIndex : newCols.length, 0, activeField);
-        setLocalConfig({ ...localConfig, columns: newCols });
-      }
-    }
-    
-    // Moving from allColumns to columns (metrics)
-    else if (activeZone === 'allColumns' && overZone === 'columns') {
-      const col = availableColumns.find(c => c.name === activeField);
-      if (col && !localConfig.values.find(v => v.field === activeField)) {
-        const aggregation = col.type === 'number' ? 'SUM' : 'MAX';
-        const newMetric: MetricConfig = {
-          id: `${activeField}-${Date.now()}`,
-          name: activeField,
-          field: activeField,
-          aggregation
-        };
-        const newValues = [...localConfig.values];
-        // If overField is an item id, find its index; if overField is empty (droppable target), insert at end
-        const insertIndex = overField ? newValues.findIndex(v => v.id === overField) : newValues.length;
-        newValues.splice(insertIndex >= 0 ? insertIndex : newValues.length, 0, newMetric);
-        setLocalConfig({ ...localConfig, values: newValues });
-      }
-    }
+      // Moving between containers during drag (optimistic UI)
+      setItems((prev: any) => {
+          const activeItems = prev[activeContainer];
+          const overItems = prev[overContainer];
+          const activeIndex = activeItems.indexOf(active.id);
+          const overIndex = (over.id in prev) 
+            ? overItems.length + 1 
+            : overItems.indexOf(over.id);
+
+          let newIndex;
+          if (over.id in prev) {
+            newIndex = overItems.length + 1;
+          } else {
+            const isBelowOverItem =
+            over &&
+            active.rect.current.translated &&
+            active.rect.current.translated.top >
+              (over.rect.top + over.rect.height);
+
+            const modifier = isBelowOverItem ? 1 : 0;
+            newIndex = overIndex >= 0 ? overIndex + modifier : overItems.length + 1;
+          }
+
+          return {
+              ...prev,
+              [activeContainer]: [
+                  ...prev[activeContainer].filter((item: string) => item !== active.id)
+              ],
+              [overContainer]: [
+                  ...prev[overContainer].slice(0, newIndex),
+                  active.id,
+                  ...prev[overContainer].slice(newIndex, prev[overContainer].length)
+              ]
+          };
+      });
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    
-    console.log('🎯 [DND] handleDragEnd called', { active: active.id, over: over?.id });
-    
-    if (!over) {
-      console.log('❌ [DND] No over target, resetting to original config');
-      // Reset to original config (cancel drag)
-      setLocalConfig(config);
+      const { active, over } = event;
+      const activeContainer = findContainer(active.id as string);
+      let overContainer: any = null;
+      if (over) {
+        overContainer = (over.id in items) ? over.id : findContainer(over.id as string);
+      }
+
+      if (activeContainer && overContainer && activeContainer === overContainer) {
+          const activeIndex = items[activeContainer as keyof typeof items].indexOf(active.id as string);
+          const overIndex = items[overContainer as keyof typeof items].indexOf(over!.id as string);
+          
+          if (activeIndex !== overIndex) {
+              setItems((prev: any) => ({
+                  ...prev,
+                  [activeContainer]: arrayMove(prev[activeContainer], activeIndex, overIndex)
+              }));
+          }
+      }
       setActiveId(null);
-      setActiveZone(null);
-      setActiveOperation(null);
-      setOverId(null);
-      return;
-    }
-
-    const [activeZoneStr, activeField] = String(active.id).split('::');
-    const overStr = String(over.id);
-    let overZoneStr: string;
-    let overField: string;
-    
-    // Check if over is a droppable zone or an item
-    if (overStr.startsWith('droppable-')) {
-      overZoneStr = overStr.replace('droppable-', '');
-      overField = '';
-      console.log('📦 [DND] Dropped on droppable zone:', overZoneStr);
-    } else {
-      [overZoneStr, overField] = overStr.split('::');
-      console.log('🎯 [DND] Dropped on item:', { zone: overZoneStr, field: overField });
-    }
-
-    console.log('🔍 [DND] Zones:', { from: activeZoneStr, to: overZoneStr, sameZone: activeZoneStr === overZoneStr });
-
-    let finalConfig = { ...localConfig };
-
-    // CASE 1: Reordering within same zone
-    if (activeZoneStr === overZoneStr && overField && activeField !== overField) {
-      console.log('🔄 [DND] CASE 1: Reordering within same zone');
-      switch (activeZoneStr) {
-        case 'groupBy': {
-          const oldIndex = localConfig.rows.indexOf(activeField);
-          const newIndex = localConfig.rows.indexOf(overField);
-          console.log('📊 [DND] GroupBy reorder:', { oldIndex, newIndex, field: activeField });
-          finalConfig = { ...localConfig, rows: arrayMove(localConfig.rows, oldIndex, newIndex) };
-          break;
-        }
-        case 'splitBy': {
-          const oldIndex = localConfig.columns.indexOf(activeField);
-          const newIndex = localConfig.columns.indexOf(overField);
-          console.log('📊 [DND] SplitBy reorder:', { oldIndex, newIndex, field: activeField });
-          finalConfig = { ...localConfig, columns: arrayMove(localConfig.columns, oldIndex, newIndex) };
-          break;
-        }
-        case 'columns': {
-          const oldIndex = localConfig.values.findIndex(v => v.id === activeField);
-          const newIndex = localConfig.values.findIndex(v => v.id === overField);
-          console.log('📊 [DND] Columns reorder:', { oldIndex, newIndex, id: activeField });
-          finalConfig = { ...localConfig, values: arrayMove(localConfig.values, oldIndex, newIndex) };
-          break;
-        }
-      }
-    }
-    // CASE 2: Moving between zones OR dropping on empty zone
-    else if (activeZoneStr !== overZoneStr) {
-      console.log('➡️ [DND] CASE 2: Moving between zones');
+      isDraggingRef.current = false;
       
-      // If localConfig already has the change from dragOver, use it
-      // Otherwise, add the item now (handles empty zone drops)
-      switch (overZoneStr) {
-        case 'groupBy': {
-          if (!localConfig.rows.includes(activeField)) {
-            console.log('➕ [DND] Adding to GroupBy:', activeField);
-            finalConfig = { ...localConfig, rows: [...localConfig.rows, activeField] };
-          }
-          break;
+      // Force a sync tick after drag ends
+      const complexValues: BiGridMetric[] = items.values.map((id: string) => {
+        let agg = metricsMeta[id]?.aggregation;
+        if (!agg) {
+            const type = columnTypes[id];
+            agg = (type === 'number' || type === 'float' || type === 'integer') ? 'sum' : 'count';
         }
-        case 'splitBy': {
-          if (!localConfig.columns.includes(activeField)) {
-            console.log('➕ [DND] Adding to SplitBy:', activeField);
-            finalConfig = { ...localConfig, columns: [...localConfig.columns, activeField] };
-          }
-          break;
-        }
-        case 'columns': {
-          // Check if field already exists as a metric
-          if (!localConfig.values.find(v => v.field === activeField)) {
-            console.log('➕ [DND] Adding to Columns:', activeField);
-            const col = availableColumns.find(c => c.name === activeField);
-            const aggregation = col?.type === 'number' ? 'SUM' : 'MAX';
-            const newMetric: MetricConfig = {
-              id: `${activeField}-${Date.now()}`,
-              name: activeField,
-              field: activeField,
-              aggregation
-            };
-            finalConfig = { ...localConfig, values: [...localConfig.values, newMetric] };
-          }
-          break;
-        }
-      }
-    }
-
-    // Commit final config to parent
-    console.log('✅ [DND] Committing final config:', finalConfig);
-    onChange(finalConfig);
-
-    setActiveId(null);
-    setActiveZone(null);
-    setActiveOperation(null);
-    setOverId(null);
+        return {
+            id,
+            field: id,
+            aggregation: agg as any
+        };
+      });
+      onChange({
+        rows: items.rows,
+        columns: items.columns,
+        values: complexValues
+      });
   };
 
-  // Show fields in "All Columns" - remove fields that are already in "Columns" (like Perspective.js)
-  // BUT keep fields that are in Group By or Split By (user can use same field multiple times)
-  const usedInColumns = new Set(localConfig.values.map(v => v.field));
-  const availableFields = availableColumns.filter(col => !usedInColumns.has(col.name));
+  const handleRemove = (id: string, from: string) => {
+      setItems((prev: any) => ({
+          ...prev,
+          [from]: prev[from].filter((item: string) => item !== id),
+          available: [...prev.available, id].sort()
+      }));
+  };
+
+  const handleAggregationChange = (id: string, agg: string) => {
+      setMetricsMeta(prev => ({
+          ...prev,
+          [id]: { aggregation: agg }
+      }));
+  };
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
-      onDragEnd={handleDragEnd}
+    <DndContext 
+        sensors={sensors} 
+        collisionDetection={closestCenter} 
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
     >
-      <div className="w-64 bg-[#1e1e1e] text-white border-r border-gray-700 flex flex-col h-full text-xs font-mono">
-        {/* PERSPECTIVE.JS STYLE SECTIONS */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex flex-col h-full bg-[#2b2b2b] text-sm border-r border-[#1a1a1a] w-64 flex-shrink-0 font-sans">
+             
+             {/* 1. Drop Zones (Top Part) */}
+             <div className="flex-1 flex flex-col min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 p-3">
+                
+                {/* Rows */}
+                <DroppableContainer 
+                    id="rows"
+                    title="Group By"
+                    items={items.rows}
+                    onRemoveItem={(id: string) => handleRemove(id, 'rows')}
+                    placeholder=""
+                />
+                
+                {/* Columns */}
+                <DroppableContainer 
+                    id="columns"
+                    title="Split By"
+                    items={items.columns}
+                    onRemoveItem={(id: string) => handleRemove(id, 'columns')}
+                    placeholder=""
+                />
+    
+                {/* Values */}
+                <DroppableContainer 
+                    id="values"
+                    title="Color"
+                    items={items.values}
+                    metricsMeta={metricsMeta}
+                    onRemoveItem={(id: string) => handleRemove(id, 'values')}
+                    onAggregationChange={handleAggregationChange}
+                    hasGroups={items.rows.length > 0}
+                    placeholder=""
+                />
+             </div>
 
-          {/* GROUP BY (Row Dimensions) */}
-          <Section title="Group By" count={localConfig.rows.length} defaultOpen={true}>
-            <DroppableZone id="droppable-groupBy">
-              <SortableContext
-                items={localConfig.rows.map(field => `groupBy::${field}`)}
-                strategy={verticalListSortingStrategy}
-              >
-                <div className="space-y-1 min-h-[40px]">
-                  {localConfig.rows.map((field, idx) => {
-                    const col = availableColumns.find(c => c.name === field);
-                    const activeField = activeId ? String(activeId).split('::')[1] : null;
-                    return (
-                      <SortableDimensionChip
-                        key={`groupBy::${field}`}
-                        id={`groupBy::${field}`}
-                        label={col?.label || field}
-                        type={col?.type || 'string'}
-                        onRemove={() => removeFromGroupBy(field)}
-                        forceGhost={activeField === field}
-                      />
-                    );
-                  })}
-                  {localConfig.rows.length === 0 && (
-                    <div className="text-gray-500 italic px-2 py-1 text-[10px]">
-                      Drag fields here
-                    </div>
-                  )}
-                </div>
-              </SortableContext>
-            </DroppableZone>
-          </Section>
-
-          {/* SPLIT BY (Column Dimensions - Multi-Level!) */}
-          <Section title="Split By" count={localConfig.columns.length} defaultOpen={true}>
-            <DroppableZone id="droppable-splitBy">
-              <SortableContext
-                items={localConfig.columns.map(field => `splitBy::${field}`)}
-                strategy={verticalListSortingStrategy}
-              >
-                <div className="space-y-1 min-h-[40px]">
-                  {localConfig.columns.map((field, idx) => {
-                    const col = availableColumns.find(c => c.name === field);
-                    const activeField = activeId ? String(activeId).split('::')[1] : null;
-                    return (
-                      <SortableDimensionChip
-                        key={`splitBy::${field}`}
-                        id={`splitBy::${field}`}
-                        label={col?.label || field}
-                        type={col?.type || 'string'}
-                        onRemove={() => removeFromSplitBy(field)}
-                        forceGhost={activeField === field}
-                      />
-                    );
-                  })}
-                  {localConfig.columns.length === 0 && (
-                    <div className="text-gray-500 italic px-2 py-1 text-[10px]">
-                      Drag fields here
-                    </div>
-                  )}
-                </div>
-              </SortableContext>
-            </DroppableZone>
-          </Section>
-
-          {/* WHERE (Filters) - TODO */}
-          <Section title="Where" count={0} defaultOpen={false}>
-            <div className="text-gray-500 italic px-2 py-1 text-[10px]">
-              No filters
-            </div>
-          </Section>
-
-          {/* COLUMNS (Metrics/Aggregations) */}
-          <Section title="Columns" count={localConfig.values.length} defaultOpen={true}>
-            <DroppableZone id="droppable-columns">
-              <SortableContext
-                items={localConfig.values.map(v => `columns::${v.id}`)}
-                strategy={verticalListSortingStrategy}
-              >
-                <div className="space-y-1 min-h-[40px]">
-                  {localConfig.values.map((metric, idx) => {
-                    const activeField = activeId ? String(activeId).split('::')[1] : null;
-                    // Determine if we should show insert-before placeholder for external drag
-                    const overIsColumnsItem = overId === `columns::${metric.id}`;
-                    const draggingFromAll = activeId ? String(activeId).startsWith('allColumns::') : false;
-                    const insertBefore = overIsColumnsItem && draggingFromAll;
-
-                    return (
-                      <div key={`wrap-columns-${metric.id}`}>
-                        {insertBefore && (
-                          <div className="h-3 bg-gray-700 rounded mt-0 mb-1 mx-1 border border-dashed border-gray-600" />
-                        )}
-                        <SortableMetricChip
-                          key={`columns::${metric.id}`}
-                          id={`columns::${metric.id}`}
-                          metric={metric}
-                          onRemove={() => removeFromColumns(metric.id)}
-                          onChangeAggregation={(agg) => changeAggregation(metric.id, agg)}
-                          forceGhost={activeField === metric.field}
-                        />
-                      </div>
-                    );
-                  })}
-
-                  {/* If dragging from All Columns onto empty Columns droppable, show end placeholder */}
-                  {activeId && String(activeId).startsWith('allColumns::') && overId === 'droppable-columns' && (
-                    <div className="h-8 bg-gray-700 rounded my-1 mx-1 border border-dashed border-gray-600" />
-                  )}
-                  {localConfig.values.length === 0 && (
-                    <div className="text-gray-500 italic px-2 py-1 text-[10px]">
-                      Drag fields here
-                    </div>
-                  )}
-                </div>
-              </SortableContext>
-            </DroppableZone>
-          </Section>
-
-          {/* ALL COLUMNS (Available Fields) */}
-          <Section title="All Columns" count={availableFields.length} defaultOpen={true}>
-            <SortableContext
-              items={availableFields.map(col => `allColumns::${col.name}`)}
-              strategy={verticalListSortingStrategy}
-            >
-              <div className="space-y-0.5">
-                {availableFields.map(col => (
-                  <SortableFieldRow
-                    key={`allColumns::${col.name}`}
-                    id={`allColumns::${col.name}`}
-                    column={col}
-                  />
-                ))}
-              </div>
-            </SortableContext>
-          </Section>
-        </div>
-      </div>
-
-      {/* Drag Overlay */}
-      <DragOverlay dropAnimation={{
-        duration: 200,
-        easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
-      }}>
-        {activeId && activeZone ? (() => {
-          const [zone, field] = String(activeId).split('::');
+             {/* 2. Available Columns (Bottom Part) */}
+             <div className="h-1/3 flex flex-col min-h-[150px] border-t border-[#333] bg-[#2b2b2b]">
+                 <div className="px-3 py-2 font-bold text-blue-400 text-[10px] uppercase tracking-wider">
+                    All Columns
+                 </div>
+                 <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600">
+                    <DroppableContainer 
+                        id="available"
+                        items={items.available}
+                        isAvailableList={true}
+                    />
+                 </div>
+             </div>
+    
+          </div>
           
-          // If dragging from columns (metric)
-          if (zone === 'columns') {
-            const metric = localConfig.values.find(v => v.id === field);
-            if (metric) {
-              return <MetricChipOverlay metric={metric} />;
-            }
-          }
-          
-          // If dragging dimension (groupBy, splitBy, or allColumns)
-          const col = availableColumns.find(c => c.name === field);
-          if (col) {
-            return <DimensionChipOverlay label={col.label || col.name} type={col.type} />;
-          }
-          
-          return null;
-        })() : null}
-      </DragOverlay>
+          <DragOverlay>
+            {activeId ? (
+                 <div className="px-2 py-1.5 bg-[#404040] border border-blue-500 shadow-xl rounded w-48 opacity-90 flex items-center gap-2 cursor-grabbing text-white">
+                    <GripVertical size={12} className="text-gray-300" />
+                    <span className="truncate text-xs font-medium">{activeId}</span>
+                </div>
+            ) : null}
+          </DragOverlay>
+
     </DndContext>
-  );
-}
-
-// Collapsible Section (Perspective.js style)
-function Section({
-  title,
-  count,
-  children,
-  defaultOpen = false
-}: {
-  title: string;
-  count: number;
-  children: React.ReactNode;
-  defaultOpen?: boolean;
-}) {
-  const [open, setOpen] = React.useState(defaultOpen);
-
-  return (
-    <div className="border-b border-gray-700">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full px-2 py-1.5 flex items-center justify-between hover:bg-gray-800 text-left"
-      >
-        <div className="flex items-center gap-1">
-          {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-          <span className="font-semibold text-[11px] uppercase tracking-wide text-gray-300">
-            {title}
-          </span>
-          {count > 0 && (
-            <span className="text-[10px] text-gray-500">({count})</span>
-          )}
-        </div>
-      </button>
-      {open && (
-        <div className="px-1 py-1">
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Droppable Zone wrapper
-function DroppableZone({ id, children }: { id: string; children: React.ReactNode }) {
-  const { setNodeRef } = useDroppable({ id });
-  
-  return (
-    <div ref={setNodeRef}>
-      {children}
-    </div>
-  );
-}
-
-// Sortable Dimension Chip (for Group By and Split By)
-function SortableDimensionChip({
-  id,
-  label,
-  type,
-  onRemove,
-  forceGhost
-}: {
-  id: string;
-  label: string;
-  type: 'string' | 'number' | 'date';
-  onRemove: () => void;
-  forceGhost?: boolean;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging
-  } = useSortable({ id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging || forceGhost ? 0.5 : 1
-  };
-
-  const typeIcon = type === 'number' ? '#' : type === 'date' ? '📅' : 'T';
-  const typeColor = type === 'number' ? 'text-blue-400' : type === 'date' ? 'text-purple-400' : 'text-gray-400';
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      className="flex items-center gap-1 px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-600 cursor-grab active:cursor-grabbing"
-    >
-      <span className={`text-[10px] font-mono ${typeColor} w-3`}>{typeIcon}</span>
-      <span className="flex-1 truncate text-[11px]">{label}</span>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onRemove();
-        }}
-        onPointerDown={(e) => e.stopPropagation()}
-        className="hover:text-red-400 transition"
-      >
-        <X className="w-3 h-3" />
-      </button>
-    </div>
-  );
-}
-
-// Sortable Metric Chip (for Columns section)
-function SortableMetricChip({
-  id,
-  metric,
-  onRemove,
-  onChangeAggregation,
-  forceGhost
-}: {
-  id: string;
-  metric: MetricConfig;
-  onRemove: () => void;
-  onChangeAggregation: (agg: MetricConfig['aggregation']) => void;
-  forceGhost?: boolean;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging
-  } = useSortable({ id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging || forceGhost ? 0.5 : 1
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      className="flex items-center gap-1 px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-600 cursor-grab active:cursor-grabbing"
-    >
-      <span className="text-[10px] font-mono text-green-400 w-3">#</span>
-
-      {/* Aggregation Selector (like Perspective.js) */}
-      <select
-        value={metric.aggregation}
-        onChange={(e) => onChangeAggregation(e.target.value as MetricConfig['aggregation'])}
-        onClick={(e) => e.stopPropagation()}
-        onPointerDown={(e) => e.stopPropagation()}
-        className="text-[10px] px-1 py-0.5 bg-gray-900 border border-gray-600 rounded text-gray-300 font-mono cursor-pointer"
-      >
-        <option value="SUM">sum</option>
-        <option value="AVG">avg</option>
-        <option value="COUNT">count</option>
-        <option value="MIN">min</option>
-        <option value="MAX">max</option>
-      </select>
-
-      <span className="flex-1 truncate text-[11px]">{metric.name}</span>
-
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onRemove();
-        }}
-        onPointerDown={(e) => e.stopPropagation()}
-        className="hover:text-red-400 transition"
-      >
-        <X className="w-3 h-3" />
-      </button>
-    </div>
-  );
-}
-
-// Sortable Field Row (for All Columns section)
-function SortableFieldRow({
-  id,
-  column,
-  forceGhost
-}: {
-  id: string;
-  column: ColumnInfo;
-  forceGhost?: boolean;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging
-  } = useSortable({ id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging || forceGhost ? 0.5 : 1
-  };
-
-  const typeIcon = column.type === 'number' ? '#' : column.type === 'date' ? '📅' : 'T';
-  const typeColor = column.type === 'number' ? 'text-blue-400' : column.type === 'date' ? 'text-purple-400' : 'text-gray-400';
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      className="flex items-center gap-1 px-2 py-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-600 cursor-grab active:cursor-grabbing"
-    >
-      <span className={`text-[10px] font-mono ${typeColor} w-3`}>{typeIcon}</span>
-      <span className="flex-1 truncate text-[11px]">{column.label || column.name}</span>
-      <div style={{ width: 44 }} />
-    </div>
-  );
-}
-
-// Drag Overlay Components
-function DimensionChipOverlay({
-  label,
-  type
-}: {
-  label: string;
-  type: 'string' | 'number' | 'date';
-}) {
-  const typeIcon = type === 'number' ? '#' : type === 'date' ? '📅' : 'T';
-  const typeColor = type === 'number' ? 'text-blue-400' : type === 'date' ? 'text-purple-400' : 'text-gray-400';
-
-  return (
-    <div 
-      className="flex items-center gap-1 px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 shadow-2xl cursor-grabbing"
-      style={{ transform: 'rotate(-3deg) scale(1.05)' }}
-    >
-      <span className={`text-[11px] font-mono ${typeColor} w-3`}>{typeIcon}</span>
-      <span className="flex-1 truncate text-[11px]">{label}</span>
-    </div>
-  );
-}
-
-function MetricChipOverlay({ metric }: { metric: MetricConfig }) {
-  return (
-    <div 
-      className="flex items-center gap-1 px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 shadow-2xl cursor-grabbing"
-      style={{ transform: 'rotate(-3deg) scale(1.05)' }}
-    >
-      <span className="text-[11px] font-mono text-green-400 w-3">#</span>
-      <span className="text-[10px] px-1.5 py-0.5 bg-gray-900 border border-gray-600 rounded text-gray-300 font-mono">
-        {metric.aggregation.toLowerCase()}
-      </span>
-      <span className="flex-1 truncate text-[11px]">{metric.name}</span>
-    </div>
   );
 }

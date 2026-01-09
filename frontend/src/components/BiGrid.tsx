@@ -735,8 +735,8 @@ export default function BiGrid({
         const maxDepth = (pivotResult.grouping || []).length || 1;
         // compute longest value among grouping fields
         let maxText = 0;
-        sampleRows.forEach(r => {
-          (pivotResult.grouping || []).forEach(g => {
+        sampleRows.forEach((r: any) => {
+          (pivotResult.grouping || []).forEach((g: any) => {
             maxText = Math.max(maxText, String(r[g] || '').length);
           });
         });
@@ -747,7 +747,7 @@ export default function BiGrid({
 
       // For data columns, measure a few sample values to determine width
       let maxContentW = 0;
-      sampleRows.forEach(r => {
+      sampleRows.forEach((r: any) => {
         const v = r[col.accessorKey || ''];
         const formatted = (col.meta?.isNumber && typeof v === 'number') ? v.toLocaleString() : (v || '');
         maxContentW = Math.max(maxContentW, measureText(formatted));

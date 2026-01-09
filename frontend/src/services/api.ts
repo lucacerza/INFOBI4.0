@@ -99,6 +99,14 @@ export const reportsApi = {
   refreshCache: async (id: number) => {
     const { data } = await api.post(`/reports/${id}/refresh-cache`);
     return data;
+  },
+  executeGrid: async (id: number, request: any) => {
+    const { data } = await api.post(`/reports/${id}/grid`, request);
+    return data;
+  },
+  executePivotDrill: async (id: number, request: any) => {
+    const { data } = await api.post(`/reports/${id}/pivot-drill`, request);
+    return data;
   }
 };
 

@@ -26,6 +26,8 @@ services:
       - DATABASE_URL=sqlite+aiosqlite:///./data/infobi.db
     volumes:
       - ./data:/app/data
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       cache:
         condition: service_healthy
@@ -37,9 +39,17 @@ services:
 
   # React frontend with Perspective.js
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      target: builder
+    command: npm run dev -- --host 0.0.0.0
     ports:
-      - "3000:80"
+      - "3000:5173"
+    environment:
+      - VITE_API_TARGET=http://backend:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     depends_on:
       - backend
 

@@ -8,8 +8,8 @@ from pydantic import BaseModel
 from app.db.database import get_db, Report, Connection
 from app.core.deps import get_current_user, get_current_admin
 from app.core.security import decrypt_password
-from app.models.schemas import ReportCreate, ReportUpdate, ReportResponse
-from app.services.query_engine import QueryEngine
+from app.models.schemas import ReportCreate, ReportUpdate, ReportResponse, GridRequest, PivotDrillRequest
+from app.services.query_engine import QueryEngine, query_engine
 from app.services.cache import cache
 
 router = APIRouter()
@@ -328,3 +328,99 @@ async def save_tabulator_config(
     await db.commit()
     
     return {"success": True, "message": "Configurazione Tabulator salvata"}
+
+    
+@router.post('/{report_id}/grid')
+async def execute_grid_query(
+    report_id: int,
+    request: GridRequest,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user)
+):
+    # 1. Fetch Report
+    result = await db.execute(select(Report).where(Report.id == report_id))
+    report = result.scalar_one_or_none()
+    if not report:
+        raise HTTPException(status_code=404, detail='Report not found')
+
+    # 2. Fetch Connection
+    conn_result = await db.execute(select(Connection).where(Connection.id == report.connection_id))
+    connection = conn_result.scalar_one_or_none()
+    if not connection:
+        raise HTTPException(status_code=400, detail='Connection not found')
+    
+    # 3. Execute
+    try:
+        conn_string = QueryEngine.build_connection_string(
+            connection.db_type,
+            {
+                'host': connection.host,
+                'port': connection.port,
+                'database': connection.database,
+                'username': connection.username,
+                'password': decrypt_password(connection.password_encrypted)
+            }
+        )
+        
+        rows, total, elapsed = await query_engine.execute_grid_query(
+            conn_string,
+            report.query,  # Base query
+            request
+        )
+        
+        return {
+            'rows': rows,
+            'lastRow': total,
+            'elapsed_ms': elapsed
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post('/{report_id}/pivot-drill')
+async def execute_pivot_drill(
+    report_id: int,
+    request: PivotDrillRequest,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user)
+):
+    # 1. Fetch Report
+    result = await db.execute(select(Report).where(Report.id == report_id))
+    report = result.scalar_one_or_none()
+    if not report:
+        raise HTTPException(status_code=404, detail='Report not found')
+
+    # 2. Fetch Connection
+    conn_result = await db.execute(select(Connection).where(Connection.id == report.connection_id))
+    connection = conn_result.scalar_one_or_none()
+    if not connection:
+        raise HTTPException(status_code=400, detail='Connection not found')
+    
+    # 3. Execute
+    try:
+        conn_string = QueryEngine.build_connection_string(
+            connection.db_type,
+            {
+                'host': connection.host,
+                'port': connection.port,
+                'database': connection.database,
+                'username': connection.username,
+                'password': decrypt_password(connection.password_encrypted)
+            }
+        )
+        
+        rows, total, elapsed = await query_engine.execute_pivot_drill(
+            conn_string,
+            report.query,  # Base query
+            request
+        )
+        
+        return {
+            'rows': rows,
+            'count': total,
+            'elapsed_ms': elapsed
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

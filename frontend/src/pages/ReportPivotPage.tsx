@@ -24,9 +24,9 @@ interface ColumnInfo {
 }
 
 interface PivotConfig {
-  rows: string[];
-  columns: string[];
-  values: MetricConfig[];
+  rows: string[];        // groupBy
+  columns: string[];     // splitBy
+  values: MetricConfig[]; // metrics
 }
 
 interface MetricConfig {
@@ -191,8 +191,8 @@ export default function ReportPivotPage() {
         {showBuilder && schema && (
           <BiGridConfig
             availableColumns={schema.columns}
-            config={pivotConfig}
-            onChange={handleConfigChange}
+            config={pivotConfig as any}
+            onChange={handleConfigChange as any}
           />
         )}
 
