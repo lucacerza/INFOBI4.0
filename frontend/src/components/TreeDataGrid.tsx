@@ -451,6 +451,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
     onExpandedChange: setExpanded,
     onColumnSizingChange: setColumnSizing,
     getSubRows: row => row.subRows,
+    getRowCanExpand: row => row.original.subRows !== undefined,
     getCoreRowModel: getCoreRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
     // getRowId, // Optional, default is index
