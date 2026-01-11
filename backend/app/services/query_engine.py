@@ -554,13 +554,36 @@ class QueryEngine:
             select_sql = ", ".join(select_parts)
             group_by_sql = ", ".join(group_by_parts)
             
-            # 4. Construct SQL
-            full_query = f"""
-                SELECT {select_sql}
-                FROM ({base_query}) AS base
-                {where_sql}
-                GROUP BY {group_by_sql}
-            """
+            # 4. Construct SQL with Pagination for Groups (Drill-Down)
+            # This prevents crashing when a group has thousands of children
+            
+            # Default pagination if not provided (safety net)
+            limit_val = (request.endRow or 1000) - (request.startRow or 0)
+            offset_val = request.startRow or 0
+            
+            is_mssql_drill = "mssql" in conn_string or "driver=sql server" in conn_string.lower()
+
+            if is_mssql_drill:
+                # MSSQL Pagination requires ORDER BY
+                # Verify if group_col is valid for ordering
+                full_query = f"""
+                    SELECT {select_sql}
+                    FROM ({base_query}) AS base
+                    {where_sql}
+                    GROUP BY {group_by_sql}
+                    ORDER BY {group_col}
+                    OFFSET {offset_val} ROWS FETCH NEXT {limit_val} ROWS ONLY
+                """
+            else:
+                # Standard SQL Pagination
+                full_query = f"""
+                    SELECT {select_sql}
+                    FROM ({base_query}) AS base
+                    {where_sql}
+                    GROUP BY {group_by_sql}
+                    ORDER BY {group_col} ASC
+                    LIMIT {limit_val} OFFSET {offset_val}
+                """
             
             # Execute
             data_df = cx.read_sql(conn_string, full_query, return_type="polars")

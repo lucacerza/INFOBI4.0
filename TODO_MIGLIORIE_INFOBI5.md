@@ -1,8 +1,22 @@
 # 📋 TODO - Migliorie INFOBI 5.0
 
-**Ultimo aggiornamento:** 8 Gennaio 2026  
+**Ultimo aggiornamento:** 11 Gennaio 2026 (Post-Milestone)
 **Obiettivo:** Rendere INFOBI 5.0 il meglio del meglio, performante con 1M+ righe  
-**Stato:** 🔴 Da iniziare
+
+---
+
+## 🚨 ANALISI PERFORMANCE & CRITICITÀ 1M+ RIGHE (11/01/2026)
+
+### [x] OTTIMIZZAZIONE 1: Column Auto-Sizing (Il collo di bottiglia attuale)
+**Problema:** La funzione `autoResizeColumns` in `TreeDataGrid.tsx` è estremamente lenta perché crea/distrugge elementi DOM per ogni cella.
+**Soluzione Scelta:** Utilizzare **Canvas 2D API** per la misurazione del testo.
+**Status:** ✅ COMPLETATO (11/01/2026) - Implementato con Canvas API e campionamento intelligente (200 righe). Risolto anche il loop infinito di ridimensionamento.
+
+### [ ] OTTIMIZZAZIONE 2: Backend Group Pagination (Critical for Big Data)
+**Problema:** L'espansione di un nodo (`GROUP BY`) non è paginata. Se espandi un nodo con 50.000 figli, il server invia 50k righe e il browser crasha.
+**Piano d'azione:**
+- [ ] Aggiungere `LIMIT/OFFSET` alle query di drill-down nel `query_engine.py`.
+- [ ] Gestire "Load More" dentro i nodi espansi nel Frontend.
 
 ---
 

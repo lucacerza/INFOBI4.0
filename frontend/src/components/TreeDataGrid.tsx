@@ -114,72 +114,15 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
       };
   };
 
-  // --- AUTO RESIZE COLUMNS ---
-  const autoResizeColumns = () => {
-      if (!parentRef.current) return;
-      
-      const newSizing: ColumnSizingState = {};
-      const columns = table.getAllColumns();
-      
-      columns.forEach(col => {
-          const columnId = col.id;
-          let maxWidth = 100; // Minimum width
-          
-          // Measure header
-          const headerElement = parentRef.current?.querySelector(
-              `[data-column-id="${columnId}"]`
-          ) as HTMLElement;
-          
-          if (headerElement) {
-              const headerText = headerElement.textContent || '';
-              // Create temporary span to measure text width
-              const tempSpan = document.createElement('span');
-              tempSpan.style.visibility = 'hidden';
-              tempSpan.style.position = 'absolute';
-              tempSpan.style.whiteSpace = 'nowrap';
-              tempSpan.style.font = window.getComputedStyle(headerElement).font;
-              tempSpan.textContent = headerText;
-              document.body.appendChild(tempSpan);
-              const headerWidth = tempSpan.offsetWidth + 40; // Add padding
-              document.body.removeChild(tempSpan);
-              maxWidth = Math.max(maxWidth, headerWidth);
-          }
-          
-          // Measure visible cells
-          const cells = parentRef.current?.querySelectorAll(
-              `[data-cell-column="${columnId}"]`
-          );
-          
-          if (cells) {
-              cells.forEach(cell => {
-                  const cellElement = cell as HTMLElement;
-                  const cellText = cellElement.textContent || '';
-                  
-                  // Create temporary span to measure text width
-                  const tempSpan = document.createElement('span');
-                  tempSpan.style.visibility = 'hidden';
-                  tempSpan.style.position = 'absolute';
-                  tempSpan.style.whiteSpace = 'nowrap';
-                  tempSpan.style.font = window.getComputedStyle(cellElement).font;
-                  tempSpan.textContent = cellText;
-                  document.body.appendChild(tempSpan);
-                  const cellWidth = tempSpan.offsetWidth + 24; // Add padding
-                  document.body.removeChild(tempSpan);
-                  
-                  maxWidth = Math.max(maxWidth, cellWidth);
-              });
-          }
-          
-          // Cap at maximum width
-          newSizing[columnId] = Math.min(maxWidth, 600);
-      });
-      
-      setColumnSizing(newSizing);
-  };
+
 
   // --- API FETCH ---
-  const fetchNodeData = async (nodePath: string[], startRow = 0, endRow = 1000) => { // Increased chunk size to 1000
+  const PAGE_SIZE = 1000;
+  
+  const fetchNodeData = async (nodePath: string[], startRow = 0, endRow = PAGE_SIZE) => { 
+    const tStart = performance.now();
     try {
+        console.log(`[Fetch] Loading node: ${nodePath.join('>')} (${startRow}-${endRow})...`);
         const response = await reportsApi.executePivotDrill(reportId, {
             rowGroupCols: rowGroups,
             groupKeys: nodePath,
@@ -189,10 +132,15 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
             startRow, 
             endRow
         });
+        const tNet = performance.now();
         
+        // Processing
         const { processedRows, headers } = processPivotData(response.rows);
+        const tProc = performance.now();
         
-        // Merge headers globally to ensure we don't lose them on pagination
+        console.log(`[Fetch] Done. Network: ${(tNet - tStart).toFixed(2)}ms, Process: ${(tProc - tNet).toFixed(2)}ms. Rows: ${processedRows.length}`);
+
+        // Merge headers globally
         if (headers.length > 0) {
              setPivotHeaders(prev => Array.from(new Set([...prev, ...headers])).sort());
         }
@@ -204,40 +152,83 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
     }
   };
 
-  // --- INITIAL LOAD ---
-  useEffect(() => {
-    const init = async () => {
-        setIsLoading(true);
-        setData([]); 
-        setPivotHeaders([]); // Reset pivot headers
-        setColumnSizing({});     // Reset sizes
-        
-        // Initial fetch - Load larger chunk for immediate fill
-        let initialData = await fetchNodeData([], 0, 1000);
-        
-        if (rowGroups.length > 0) {
-            initialData = initialData.map((r: any) => ({
-                ...r,
-                _path: [r.key_val],
-                subRows: rowGroups.length > 1 ? [] : undefined 
-            }));
-        }
+  const onLoadMore = async (row: Row<any>) => {
+      // row.original is the LoadMore placeholder
+      const parentPath = row.original._parentPath;
+      const currentCount = row.original._currentCount;
+      const parentId = row.getParentRow()?.id;
 
-        setData(initialData);
-        setIsLoading(false);
-        
-        // Trigger auto-resize after render
-        autoResizeColumns();
-    };
-    init();
-  }, [reportId, rowGroups, valueCols, pivotCols]); 
+      setLoadingNodes(prev => ({ ...prev, [row.id]: true }));
+      
+      const newChildren = await fetchNodeData(parentPath, currentCount, currentCount + PAGE_SIZE);
+      
+      const childrenProcessed = newChildren.map((r: any) => ({
+             ...r,
+             _path: [...parentPath, r.key_val],
+             subRows: row.depth + 1 < rowGroups.length ? [] : undefined
+      }));
 
-  // Auto-resize when data changes
-  useEffect(() => {
-    if (data.length > 0 && !isLoading) {
-        autoResizeColumns();
-    }
-  }, [data, isLoading]);
+      // If we got a full page, we might need another Load More button
+      if (childrenProcessed.length === PAGE_SIZE) {
+          childrenProcessed.push({
+             key_val: 'LOAD_MORE',
+             _isLoadMore: true,
+             _parentPath: parentPath,
+             _currentCount: currentCount + PAGE_SIZE
+          });
+      }
+
+      setData(old => {
+            const newData = [...old];
+            
+            // Helper to recursively find and update the list
+            const updateList = (nodes: any[], depth: number): boolean => {
+                 // Special case: Root level load more
+                 if (parentPath.length === 0) {
+                     // Find the load more node index
+                     const idx = nodes.findIndex(n => n._isLoadMore && n._currentCount === currentCount);
+                     if (idx !== -1) {
+                         // Remove load more, add new items
+                         nodes.splice(idx, 1, ...childrenProcessed);
+                         return true;
+                     }
+                     return false;
+                 }
+
+                 for (const node of nodes) {
+                     let match = false;
+                     // Navigate down the path
+                     if (depth < parentPath.length && node.key_val === parentPath[depth]) {
+                         match = true;
+                     }
+                     
+                     if (match) {
+                         if (depth === parentPath.length - 1) {
+                             // We found the parent node. Its subRows contain the Load More button.
+                             if (node.subRows) {
+                                 const idx = node.subRows.findIndex((n: any) => n._isLoadMore && n._currentCount === currentCount);
+                                 if (idx !== -1) {
+                                     node.subRows.splice(idx, 1, ...childrenProcessed);
+                                     return true;
+                                 }
+                             }
+                             return true;
+                         } else if (node.subRows) {
+                            if (updateList(node.subRows, depth + 1)) return true;
+                         }
+                     }
+                 }
+                 return false;
+            };
+            
+            updateList(newData, 0);
+            return newData;
+      });
+
+      setLoadingNodes(prev => ({ ...prev, [row.id]: false }));
+  };
+
+
 
   // --- EXPAND HANDLER ---
   const onExpand = async (row: Row<any>) => {
@@ -247,13 +238,22 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
          setLoadingNodes(prev => ({ ...prev, [row.id]: true }));
          
          const path: string[] = row.original._path || [];
-         const children = await fetchNodeData(path);
+         const children = await fetchNodeData(path, 0, PAGE_SIZE);
          
          const childrenProcessed = children.map((r: any) => ({
              ...r,
              _path: [...path, r.key_val],
              subRows: row.depth + 2 < rowGroups.length ? [] : undefined
          }));
+
+         if (childrenProcessed.length === PAGE_SIZE) {
+             childrenProcessed.push({
+                 key_val: 'LOAD_MORE',
+                 _isLoadMore: true,
+                 _parentPath: path,
+                 _currentCount: PAGE_SIZE
+             });
+         }
 
          setData(old => {
              const newData = [...old];
@@ -322,7 +322,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
                     id: `group_${pivotKey}`,
                     columns: valueCols.map(metric => ({
                         id: `${metric.field}_${pivotKey}`,
-                        accessorKey: `${metric.field}_${pivotKey}`,
+                        accessorFn: (row: any) => row[`${metric.field}_${pivotKey}`],
                         header: metric.field,
                         cell: (info: any) => {
                              const val = info.getValue();
@@ -353,6 +353,28 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
             cell: ({ row, getValue }) => {
                 const isLoading = loadingNodes[row.id];
                 const canExpand = row.getCanExpand();
+                const isLoadMore = row.original._isLoadMore;
+
+                if (isLoadMore) {
+                     return (
+                         <div 
+                             className="flex items-center gap-1"
+                             style={{ paddingLeft: `${row.depth * 15}px` }}
+                         >
+                            <button
+                               onClick={(e) => {
+                                   e.stopPropagation();
+                                   onLoadMore(row);
+                               }}
+                               disabled={isLoading}
+                               className="text-blue-600 hover:text-blue-800 hover:underline font-semibold flex items-center gap-2"
+                            >
+                                {isLoading ? <Loader2 size={14} className="animate-spin"/> : null}
+                                Load more...
+                            </button>
+                         </div>
+                     )
+                }
                 
                 return (
                     <div 
@@ -430,7 +452,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
     }
 
     return cols;
-  }, [rowGroups, valueCols, loadingNodes, pivotCols, pivotHeaders, columnSizing]);
+  }, [rowGroups, valueCols, loadingNodes, pivotCols, pivotHeaders]);
 
   // Optimize row id generation for stability
   const getRowId = (row: any, relativeIndex: number, parent?: Row<any>) => {
@@ -464,6 +486,120 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
   });
 
   const { rows } = table.getRowModel();
+
+  // --- AUTO RESIZE COLUMNS ---
+  const autoResizeColumns = () => {
+      // Use requestAnimationFrame to avoid blocking the main thread immediately
+      requestAnimationFrame(() => {
+          const t0 = performance.now();
+          
+          const newSizing: ColumnSizingState = {};
+          const columns = table.getAllColumns();
+          const activeRows = table.getRowModel().rows; // Get all active rows (flat list respecting expansion)
+          
+          // Use Canvas for high-performance text measurement
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          if (!context) return;
+
+          // Estimate font - use a robust fallback matching the CSS
+          context.font = '12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+          // Try to get real font if possible
+          if (parentRef.current) {
+               const exampleCell = parentRef.current.querySelector('[data-cell-column]');
+               if (exampleCell) {
+                   context.font = window.getComputedStyle(exampleCell).font;
+               }
+          }
+          
+          columns.forEach(col => {
+              const columnId = col.id;
+              let maxWidth = 80; 
+              
+              // 1. Measure Header
+              let headerText = columnId;
+              if (typeof col.columnDef.header === 'string') {
+                  headerText = col.columnDef.header;
+              }
+              const headerMetrics = context.measureText(headerText);
+              maxWidth = Math.max(maxWidth, headerMetrics.width + 32); 
+
+              // 2. Measure Data (Sampling first 200 rows for speed)
+              const sampleRows = activeRows.slice(0, 200);
+              const hasGroupIndent = columnId === 'group';
+              
+              sampleRows.forEach(row => {
+                  const value = row.getValue(columnId);
+                  
+                  // Handle indentation for Group column
+                  let additionalWidth = 0;
+                  if (hasGroupIndent) {
+                      additionalWidth = (row.depth * 15) + 24; 
+                  }
+
+                  if (value !== null && value !== undefined) {
+                      let text = String(value);
+                      if (typeof value === 'number') {
+                          text = value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+                      }
+                      const metrics = context.measureText(text);
+                      maxWidth = Math.max(maxWidth, metrics.width + 24 + additionalWidth);
+                  } else if (hasGroupIndent) {
+                      maxWidth = Math.max(maxWidth, 24 + additionalWidth);
+                  }
+              });
+              
+              // Cap at maximum width
+              newSizing[columnId] = Math.min(maxWidth, 800);
+          });
+          
+          const t1 = performance.now();
+          console.log(`[AutoResize] Calculated sizing for ${columns.length} columns based on ${activeRows.length} rows (sampled ${Math.min(activeRows.length, 200)}) in ${(t1 - t0).toFixed(2)}ms`);
+          setColumnSizing(newSizing);
+      });
+  };
+
+  // --- INITIAL LOAD ---
+  useEffect(() => {
+    const init = async () => {
+        setIsLoading(true);
+        setData([]); 
+        setPivotHeaders([]); 
+        setColumnSizing({});     
+        
+        let initialData = await fetchNodeData([], 0, PAGE_SIZE);
+        
+        if (rowGroups.length > 0) {
+            initialData = initialData.map((r: any) => ({
+                ...r,
+                _path: [r.key_val],
+                subRows: rowGroups.length > 1 ? [] : undefined 
+            }));
+        }
+
+        // Add Load More if full page
+        if (initialData.length === PAGE_SIZE) {
+            initialData.push({
+                key_val: 'LOAD_MORE',
+                _isLoadMore: true,
+                _parentPath: [],
+                _currentCount: PAGE_SIZE
+            });
+        }
+
+        setData(initialData);
+        setIsLoading(false);
+        autoResizeColumns();
+    };
+    init();
+  }, [reportId, rowGroups, valueCols, pivotCols]); 
+
+  // Auto-resize when data changes or columns update
+  useEffect(() => {
+    if (data.length > 0 && !isLoading) {
+        autoResizeColumns();
+    }
+  }, [data, isLoading, columns]);
 
   // --- VIRTUALIZATION ---
   const rowVirtualizer = useVirtualizer({
