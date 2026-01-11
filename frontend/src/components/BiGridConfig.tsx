@@ -225,6 +225,32 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
     });
   }, [availableColumns]); // Breaking dependency loops: don't depend on 'config' here, only init on mount or cols change
 
+  // --- AUTO-CORRECT AGGREGATIONS WHEN GROUPING ADDED ---
+  useEffect(() => {
+    // If we have groups, ensure text fields use COUNT instead of SUM
+    if (items.rows.length > 0) {
+        let changed = false;
+        const newMeta = { ...metricsMeta };
+
+        items.values.forEach(val => {
+            // Check type from the map we built
+            const typeLower = (columnTypes[val] || '').toLowerCase();
+            const isText = typeLower === 'string' || typeLower === 'date' || typeLower === 'text' || typeLower === 'varchar'; 
+            const currentAgg = newMeta[val]?.aggregation;
+
+            // If it is text and (no aggregation OR aggregation is SUM), force COUNT
+            if (isText && (!currentAgg || currentAgg === 'sum')) {
+                 newMeta[val] = { aggregation: 'count' };
+                 changed = true;
+            }
+        });
+
+        if (changed) {
+            setMetricsMeta(prev => ({ ...prev, ...newMeta }));
+        }
+    }
+  }, [items.rows, items.values, columnTypes]); // Re-run when rows or values change
+
   // --- SYNC TO PARENT ---
   // Debounce could be added here if needed, but we'll sync on every change for responsiveness
   useEffect(() => {
@@ -418,7 +444,7 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
                 {/* Values */}
                 <DroppableContainer 
                     id="values"
-                    title="Color"
+                    title="Columns"
                     items={items.values}
                     metricsMeta={metricsMeta}
                     onRemoveItem={(id: string) => handleRemove(id, 'values')}

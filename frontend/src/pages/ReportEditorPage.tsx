@@ -213,7 +213,26 @@ export default function ReportEditorPage() {
       const schemaData = await schemaRes.json();
       setSchema(schemaData);
 
-      // Auto-populate Columns with ALL fields for immediate flat table view
+      // Try to load existing config
+      try {
+          const configRes = await fetch(`/api/pivot/${id}/config`, {
+            headers: { 'Authorization': `Bearer ${getToken()}` }
+          });
+          
+          if (configRes.ok) {
+              const savedConfig = await configRes.json();
+              if (savedConfig.rows?.length > 0 || savedConfig.columns?.length > 0 || savedConfig.values?.length > 0) {
+                  console.log("Loaded saved pivot config");
+                  setPivotConfig(savedConfig);
+                  setShowPivotConfig(true);
+                  return;
+              }
+          }
+      } catch (e) {
+          console.log("No saved config found or error", e);
+      }
+
+      // Fallback: Auto-populate Columns with ALL fields for immediate flat table view
       // User can then remove fields, add grouping, split columns, etc.
       const allFieldsAsMetrics: MetricConfig[] = schemaData.columns.map((col: ColumnInfo, idx: number) => ({
         id: `metric-${idx}`,

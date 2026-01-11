@@ -10,6 +10,10 @@ export default defineConfig({
         target: process.env.VITE_API_TARGET || 'http://localhost:8000',
         changeOrigin: true
       }
+    },
+    watch: {
+      usePolling: true,
+      interval: 100
     }
   },
   build: {

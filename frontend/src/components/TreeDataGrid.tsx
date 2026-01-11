@@ -122,7 +122,6 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
   const fetchNodeData = async (nodePath: string[], startRow = 0, endRow = PAGE_SIZE) => { 
     const tStart = performance.now();
     try {
-        console.log(`[Fetch] Loading node: ${nodePath.join('>')} (${startRow}-${endRow})...`);
         const response = await reportsApi.executePivotDrill(reportId, {
             rowGroupCols: rowGroups,
             groupKeys: nodePath,
@@ -138,8 +137,6 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
         const { processedRows, headers } = processPivotData(response.rows);
         const tProc = performance.now();
         
-        console.log(`[Fetch] Done. Network: ${(tNet - tStart).toFixed(2)}ms, Process: ${(tProc - tNet).toFixed(2)}ms. Rows: ${processedRows.length}`);
-
         // Merge headers globally
         if (headers.length > 0) {
              setPivotHeaders(prev => Array.from(new Set([...prev, ...headers])).sort());
@@ -502,19 +499,29 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
           const context = canvas.getContext('2d');
           if (!context) return;
 
-          // Estimate font - use a robust fallback matching the CSS
+          // Estimate font - try to find ANY cell to measure font
+          // Default fallback
           context.font = '12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
-          // Try to get real font if possible
+          
           if (parentRef.current) {
-               const exampleCell = parentRef.current.querySelector('[data-cell-column]');
-               if (exampleCell) {
-                   context.font = window.getComputedStyle(exampleCell).font;
+               // Try to find a header or a cell
+               const exampleElement = parentRef.current.querySelector('[data-column-id]') || parentRef.current.querySelector('[data-cell-column]');
+               if (exampleElement) {
+                   const computed = window.getComputedStyle(exampleElement);
+                   if (computed.font && computed.font !== '') {
+                       context.font = computed.font;
+                   } else {
+                       // Fallback construction
+                       context.font = `500 12px ${computed.fontFamily || 'monospace'}`;
+                   }
                }
           }
           
+          let hasChanges = false;
+
           columns.forEach(col => {
               const columnId = col.id;
-              let maxWidth = 80; 
+              let maxWidth = 80; // Minimum aesthetic width
               
               // 1. Measure Header
               let headerText = columnId;
@@ -550,11 +557,10 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
               });
               
               // Cap at maximum width
-              newSizing[columnId] = Math.min(maxWidth, 800);
+              const finWidth = Math.min(maxWidth, 800);
+              newSizing[columnId] = finWidth;
           });
           
-          const t1 = performance.now();
-          console.log(`[AutoResize] Calculated sizing for ${columns.length} columns based on ${activeRows.length} rows (sampled ${Math.min(activeRows.length, 200)}) in ${(t1 - t0).toFixed(2)}ms`);
           setColumnSizing(newSizing);
       });
   };
@@ -597,9 +603,26 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
   // Auto-resize when data changes or columns update
   useEffect(() => {
     if (data.length > 0 && !isLoading) {
-        autoResizeColumns();
+        // Robust resize trigger
+        const attemptResize = (attempt = 1) => {
+            requestAnimationFrame(() => {
+                const activeRows = table.getRowModel().rows;
+                // If we have data but no active rows in the model yet, wait and retry
+                if (data.length > 0 && activeRows.length === 0 && attempt < 10) {
+                    setTimeout(() => attemptResize(attempt + 1), 100);
+                    return;
+                }
+                autoResizeColumns();
+            });
+        };
+
+        const timer = setTimeout(() => {
+             attemptResize();
+        }, 50);
+        
+        return () => clearTimeout(timer);
     }
-  }, [data, isLoading, columns]);
+  }, [data, isLoading, columns]); // removed table from deps to avoid loop if table ref causes issues, columns update should suffice
 
   // --- VIRTUALIZATION ---
   const rowVirtualizer = useVirtualizer({
@@ -662,19 +685,34 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
              >
                  {/* STICKY HEADER */}
                  <div 
-                    className="sticky top-0 z-10 bg-gray-50 border-b shadow-sm flex flex-col text-gray-700 font-bold select-none"
+                    className="sticky top-0 z-30 bg-gray-50 shadow-sm flex flex-col text-gray-700 font-bold select-none"
                     style={{ height: `${TOTAL_HEADER_HEIGHT}px`, width: '100%', minWidth: 'fit-content' }}
                  >
-                        {headerGroups.map(headerGroup => (
+                        {headerGroups.map((headerGroup, groupIndex) => (
                             <div key={headerGroup.id} className="flex" style={{ height: HEADER_ROW_HEIGHT }}>
-                                {headerGroup.headers.map(header => (
+                                {headerGroup.headers.map((header) => {
+                                     // Uniform styling for all headers as requested
+                                     const borderClass = "border-r border-b border-gray-300 bg-gray-50";
+                                     
+                                     // Sticky group column logic
+                                     const isGroupCol = header.column.id === 'group';
+                                     const stickyStyle = (rowGroups.length > 0 && isGroupCol) 
+                                         ? { position: 'sticky' as const, left: 0, zIndex: 40 } 
+                                         : {};
+
+                                     // User Request: Remove horizontal separator (border-b) but keep vertical (border-r) for Group Column
+                                     const cellBorderClass = isGroupCol 
+                                        ? "border-r border-gray-300 bg-gray-50" // kept vertical, removed horizontal (border-b)
+                                        : "border-r border-b border-gray-300 bg-gray-50";
+
+                                     return (
                                     <div 
                                        key={header.id} 
                                        data-column-id={header.column.id}
-                                       className="px-2 border-r border-gray-300 relative group flex items-center justify-between"
-                                       style={{ width: header.getSize() }}
+                                       className={`px-2 relative group flex items-center justify-center ${cellBorderClass}`}
+                                       style={{ width: header.getSize(), ...stickyStyle }}
                                     >
-                                        <span className="truncate flex-1" title={header.column.columnDef.header as string}>
+                                        <span className="truncate flex-1 text-center" title={header.column.columnDef.header as string}>
                                             {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                                         </span>
                                         {/* Resize Handle only on bottom row leaf headers usually, but here on all for width control */}
@@ -686,7 +724,8 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
                                             }`}
                                         />
                                     </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         ))}
                  </div>
@@ -704,23 +743,36 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
                     return (
                         <div
                             key={row.id}
-                            className={`flex border-b border-gray-100 absolute left-0 ${row.getIsExpanded() ? 'bg-gray-50' : 'bg-white'} hover:bg-blue-50 w-full`}
+                            className={`flex border-b border-gray-100 absolute left-0 ${row.getIsExpanded() ? 'bg-gray-50' : 'bg-white'} hover:bg-blue-50 w-full font-medium`}
                             style={{
                                 height: `${virtualRow.size}px`,
                                 transform: `translateY(${virtualRow.start + TOTAL_HEADER_HEIGHT}px)`, 
                                 top: 0, 
                             }}
                         >
-                            {row.getVisibleCells().map(cell => (
+                            {row.getVisibleCells().map(cell => {
+                                const val = cell.getValue();
+                                const isNumber = typeof val === 'number';
+                                
+                                // Sticky body cell logic
+                                const isGroupCol = cell.column.id === 'group';
+                                const stickyStyle = (rowGroups.length > 0 && isGroupCol)
+                                    ? { position: 'sticky' as const, left: 0, zIndex: 20, backgroundColor: row.getIsExpanded() ? '#f9fafb' : '#ffffff' }
+                                    : {};
+
+                                return (
                                 <div 
                                     key={cell.id}
                                     data-cell-column={cell.column.id}
-                                    className="px-2 border-r border-gray-100 flex items-center text-gray-600"
-                                    style={{ width: cell.column.getSize(), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                    className={`px-2 border-r border-gray-200 flex items-center text-gray-700 ${isNumber ? 'justify-end' : 'justify-start'}`}
+                                    style={{ width: cell.column.getSize(), overflow: 'hidden', whiteSpace: 'nowrap', ...stickyStyle }}
                                 >
+                                    <div className="truncate w-full">
                                     {cell.getIsPlaceholder() ? null : flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                    </div>
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     );
                  })}

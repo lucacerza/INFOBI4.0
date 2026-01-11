@@ -120,24 +120,16 @@ class QueryEngine:
         """
         Execute pivot query with ROLLUP for correct aggregations
         Returns: (arrow_bytes, row_count, execution_time_ms)
-
-        Args:
-            limit: If provided, limits aggregated rows for preview mode (e.g., 100)
         """
-        start = time.perf_counter()
+        start_total = time.perf_counter()
         
         try:
             is_mssql = "mssql" in conn_string
 
-            # DEBUG: Log input parameters with full details
-            logger.info(f"🔍 execute_pivot called:")
-            logger.info(f"   - group_by: {group_by}")
-            logger.info(f"   - metrics count: {len(metrics) if metrics else 0}")
-            if metrics:
-                for i, m in enumerate(metrics[:3]):  # Log first 3 metrics
-                    logger.info(f"   - metric[{i}]: field={m.get('field')}, agg={m.get('aggregation')}, name={m.get('name')}")
-            logger.info(f"   - filters: {filters}")
-            logger.info(f"   - limit: {limit}")
+            logger.info(f"🔍 execute_pivot called with groups={group_by}, metrics={len(metrics)}")
+            
+            # --- MEASURE SQL EXECUTION TIME ---
+            start_sql = time.perf_counter()
 
             # CASE 1: No group_by and no metrics → FLAT TABLE (raw data with all columns)
             if not group_by and not metrics:
@@ -151,6 +143,8 @@ class QueryEngine:
                     conn_string,
                     limited_query
                 )
+            
+
 
                 sink = BytesIO()
                 with ipc.new_stream(sink, arrow_table.schema) as writer:
@@ -188,16 +182,18 @@ class QueryEngine:
                     conn_string,
                     limited_query
                 )
+                elapsed_sql = (time.perf_counter() - start_sql) * 1000
 
                 sink = BytesIO()
                 with ipc.new_stream(sink, arrow_table.schema) as writer:
                     writer.write_table(arrow_table)
 
-                elapsed = (time.perf_counter() - start) * 1000
-                logger.info(f"📊 COLUMN SELECT mode: {arrow_table.num_rows} rows, {len(select_cols)} columns ({elapsed:.1f}ms)")
-                return sink.getvalue(), arrow_table.num_rows, elapsed
+                elapsed_total = (time.perf_counter() - start_total) * 1000
+                logger.info(f"📊 COLUMN SELECT mode: {arrow_table.num_rows} rows, {len(select_cols)} cols. SQL: {elapsed_sql:.1f}ms, Total: {elapsed_total:.1f}ms")
+                return sink.getvalue(), arrow_table.num_rows, elapsed_total
             
             # Build SELECT clause
+            start_build = time.perf_counter()
             select_parts = []
             
             # Group by columns

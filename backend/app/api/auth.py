@@ -13,10 +13,25 @@ router = APIRouter()
 @router.post("/login", response_model=TokenResponse)
 async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Authenticate user and return JWT token"""
+    from app.core.security import get_password_hash
+    import logging
+    logger = logging.getLogger(__name__)
+
     result = await db.execute(select(User).where(User.username == request.username))
     user = result.scalar_one_or_none()
     
-    if not user or not verify_password(request.password, user.password_hash):
+    if not user:
+        logger.warning(f"Login failed: User {request.username} not found")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password"
+        )
+    
+    if not verify_password(request.password, user.password_hash):
+        logger.warning(f"Login failed: Password mismatch for {request.username}")
+        # DEBUG: Print hashes (remove in prod)
+        # logger.info(f"DB Hash: {user.password_hash}")
+        # logger.info(f"Computed Hash: {get_password_hash(request.password)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password"

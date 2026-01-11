@@ -1,5 +1,6 @@
 """Reports API with high-performance data streaming"""
 import time
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -11,6 +12,8 @@ from app.core.security import decrypt_password
 from app.models.schemas import ReportCreate, ReportUpdate, ReportResponse, GridRequest, PivotDrillRequest
 from app.services.query_engine import QueryEngine, query_engine
 from app.services.cache import cache
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -384,6 +387,9 @@ async def execute_pivot_drill(
     db: AsyncSession = Depends(get_db),
     user = Depends(get_current_user)
 ):
+    import time
+    start_total = time.perf_counter()
+    
     # 1. Fetch Report
     result = await db.execute(select(Report).where(Report.id == report_id))
     report = result.scalar_one_or_none()
@@ -409,18 +415,22 @@ async def execute_pivot_drill(
             }
         )
         
-        rows, total, elapsed = await query_engine.execute_pivot_drill(
+        rows, total, elapsed_query = await query_engine.execute_pivot_drill(
             conn_string,
             report.query,  # Base query
             request
         )
         
+        total_time = (time.perf_counter() - start_total) * 1000
+        logger.info(f"⚡ PIVOT DRILL Report {report_id}: {total} rows. Query={elapsed_query:.1f}ms, Total={total_time:.1f}ms")
+        
         return {
             'rows': rows,
             'count': total,
-            'elapsed_ms': elapsed
+            'elapsed_ms': elapsed_query
         }
         
     except Exception as e:
+        logger.error(f"❌ PIVOT DRILL Error Report {report_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
