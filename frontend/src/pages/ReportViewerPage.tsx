@@ -10,13 +10,24 @@ import {
   FileText, Clock, Database, Zap, Edit, LayoutGrid
 } from 'lucide-react';
 
+interface Report {
+  id: number;
+  name: string;
+  description?: string;
+  sql_query: string;
+  connection_id: number;
+  created_at?: string;
+  updated_at?: string;
+  pivot_config?: any;
+}
+
 export default function ReportViewerPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
   const reportId = parseInt(id || '0');
   
-  const [report, setReport] = useState<any>(null);
+  const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);

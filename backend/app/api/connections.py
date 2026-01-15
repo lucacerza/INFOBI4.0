@@ -89,7 +89,7 @@ async def test_new_connection(
 
         logger.info(f"Testing connection to {request.host}:{request.port}/{request.database}")
 
-        # Run in thread pool with timeout (increased to 180s for cold start)
+        # Run in thread pool with timeout from config
         loop = asyncio.get_event_loop()
         try:
             result = await asyncio.wait_for(
@@ -99,7 +99,7 @@ async def test_new_connection(
                     request.db_type,
                     config
                 ),
-                timeout=180.0  # 180 second timeout for cold start + warm-up
+                timeout=float(settings.CONNECTION_TIMEOUT)
             )
         except asyncio.TimeoutError:
             raise HTTPException(status_code=408, detail="Timeout: la connessione ha impiegato troppo tempo")
@@ -266,7 +266,7 @@ async def test_connection(
             "ssl_enabled": conn.ssl_enabled
         }
 
-        # Run in thread pool with timeout (increased to 180s for cold start)
+        # Run in thread pool with timeout from config
         loop = asyncio.get_event_loop()
         result = await asyncio.wait_for(
             loop.run_in_executor(
@@ -275,7 +275,7 @@ async def test_connection(
                 conn.db_type,
                 config
             ),
-            timeout=180.0  # 180 second timeout for cold start + warm-up
+            timeout=float(settings.CONNECTION_TIMEOUT)
         )
 
         return {"success": True, "message": f"Connessione OK ({result['time_ms']:.0f}ms)"}

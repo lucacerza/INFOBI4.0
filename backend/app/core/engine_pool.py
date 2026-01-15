@@ -1,4 +1,5 @@
 import urllib.parse
+import hashlib
 from typing import Dict, Any
 from sqlalchemy import create_engine, Engine
 from sqlalchemy.pool import QueuePool
@@ -11,8 +12,11 @@ def get_engine(db_type: str, config: Dict[str, Any]) -> Engine:
     Restituisce un Engine SQLAlchemy con Connection Pooling configurato.
     Se l'engine esiste già per questa configurazione, lo riutilizza.
     """
-    # Chiave univoca per identificare la connessione
-    key = f"{db_type}://{config['username']}:{config['password']}@{config['host']}:{config['port']}/{config['database']}"
+    # Chiave univoca per identificare la connessione (senza password in chiaro per sicurezza log)
+    key_data = f"{db_type}://{config['username']}@{config['host']}:{config['port']}/{config['database']}"
+    # Aggiungi hash della password per unicità senza esporla
+    pwd_hash = hashlib.sha256(config['password'].encode()).hexdigest()[:16]
+    key = f"{key_data}#{pwd_hash}"
     
     if key in _engines:
         return _engines[key]
