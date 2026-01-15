@@ -335,7 +335,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
                         cell: (info: any) => {
                              const val = info.getValue();
                              if (val === null || val === undefined) return '';
-                             if (typeof val === 'number') return val.toLocaleString(undefined, { maximumFractionDigits: 2 });
+                             if (typeof val === 'number') return <div style={{ textAlign: 'right' }}>{val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>;
                              return String(val);
                         },
                         size: 120,
@@ -450,7 +450,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
                 cell: (info: any) => {
                      const val = info.getValue();
                      if (val === null || val === undefined) return '';
-                     if (typeof val === 'number') return val.toLocaleString(undefined, { maximumFractionDigits: 2 });
+                     if (typeof val === 'number') return <div style={{ textAlign: 'right' }}>{val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>;
                      return String(val);
                 },
                 size: 150,
@@ -558,7 +558,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
                   if (value !== null && value !== undefined) {
                       let text = String(value);
                       if (typeof value === 'number') {
-                          text = value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+                          text = value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                       }
                       const metrics = context.measureText(text);
                       maxWidth = Math.max(maxWidth, metrics.width + 24 + additionalWidth);
