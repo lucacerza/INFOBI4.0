@@ -9,6 +9,7 @@ from app.db.database import get_db, Report, Connection
 from app.core.deps import get_current_user
 from app.core.security import decrypt_password
 from app.services.query_engine import QueryEngine
+from app.core.engine_pool import get_engine
 
 router = APIRouter()
 
@@ -29,24 +30,24 @@ async def export_xlsx(
         raise HTTPException(status_code=404, detail="Report not found")
     
     report, connection = row
-    
-    conn_string = QueryEngine.build_connection_string(
-        connection.db_type,
-        {
-            "host": connection.host,
-            "port": connection.port,
-            "database": connection.database,
-            "username": connection.username,
-            "password": decrypt_password(connection.password_encrypted)
-        }
-    )
-    
+
+    config = {
+        "host": connection.host,
+        "port": connection.port,
+        "database": connection.database,
+        "username": connection.username,
+        "password": decrypt_password(connection.password_encrypted),
+        "ssl_enabled": connection.ssl_enabled
+    }
+
+    # Ensure pool is warm before query (eliminates cold start)
+    QueryEngine.ensure_pool_warm(connection.db_type, config)
+
     try:
-        import connectorx as cx
-        
-        arrow_table = cx.read_sql(conn_string, report.query, return_type="arrow")
-        df = pl.from_arrow(arrow_table)
-        
+        engine = get_engine(connection.db_type, config)
+        with engine.connect() as conn:
+            df = pl.read_database(report.query, connection=conn)
+
         # Write to Excel
         output = BytesIO()
         df.write_excel(output, worksheet="Data")
@@ -79,24 +80,24 @@ async def export_csv(
         raise HTTPException(status_code=404, detail="Report not found")
     
     report, connection = row
-    
-    conn_string = QueryEngine.build_connection_string(
-        connection.db_type,
-        {
-            "host": connection.host,
-            "port": connection.port,
-            "database": connection.database,
-            "username": connection.username,
-            "password": decrypt_password(connection.password_encrypted)
-        }
-    )
-    
+
+    config = {
+        "host": connection.host,
+        "port": connection.port,
+        "database": connection.database,
+        "username": connection.username,
+        "password": decrypt_password(connection.password_encrypted),
+        "ssl_enabled": connection.ssl_enabled
+    }
+
+    # Ensure pool is warm before query (eliminates cold start)
+    QueryEngine.ensure_pool_warm(connection.db_type, config)
+
     try:
-        import connectorx as cx
-        
-        arrow_table = cx.read_sql(conn_string, report.query, return_type="arrow")
-        df = pl.from_arrow(arrow_table)
-        
+        engine = get_engine(connection.db_type, config)
+        with engine.connect() as conn:
+            df = pl.read_database(report.query, connection=conn)
+
         output = BytesIO()
         df.write_csv(output)
         output.seek(0)

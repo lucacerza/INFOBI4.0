@@ -29,9 +29,6 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
     
     if not verify_password(request.password, user.password_hash):
         logger.warning(f"Login failed: Password mismatch for {request.username}")
-        # DEBUG: Print hashes (remove in prod)
-        # logger.info(f"DB Hash: {user.password_hash}")
-        # logger.info(f"Computed Hash: {get_password_hash(request.password)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password"

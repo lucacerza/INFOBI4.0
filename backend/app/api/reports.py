@@ -35,27 +35,27 @@ async def test_query(
         raise HTTPException(status_code=404, detail="Connessione non trovata")
     
     try:
-        import connectorx as cx
-        
-        conn_string = QueryEngine.build_connection_string(
-            connection.db_type,
-            {
-                "host": connection.host,
-                "port": connection.port,
-                "database": connection.database,
-                "username": connection.username,
-                "password": decrypt_password(connection.password_encrypted)
-            }
-        )
-        
+        config = {
+            "host": connection.host,
+            "port": connection.port,
+            "database": connection.database,
+            "username": connection.username,
+            "password": decrypt_password(connection.password_encrypted),
+            "ssl_enabled": connection.ssl_enabled
+        }
+
+        # Ensure pool is warm before query (eliminates cold start)
+        QueryEngine.ensure_pool_warm(connection.db_type, config)
+
         # Wrap query with limit for testing
         if connection.db_type == "mssql":
             test_query = f"SELECT TOP 100 * FROM ({request.query}) AS test_query"
         else:
             test_query = f"SELECT * FROM ({request.query}) AS test_query LIMIT 100"
-        
-        # Execute
-        arrow_table = cx.read_sql(conn_string, test_query, return_type="arrow")
+
+        # Execute using pool
+        # Nota: usiamo _execute_query_sync direttamente o tramite wrapper
+        arrow_table = QueryEngine._execute_query_sync(connection.db_type, config, test_query)
         
         return {
             "success": True,
@@ -256,21 +256,23 @@ async def get_report_data(
             elapsed = (time.perf_counter() - start_time) * 1000
     
     if not cache_hit:
-        # Build connection string
-        conn_string = QueryEngine.build_connection_string(
-            connection.db_type,
-            {
-                "host": connection.host,
-                "port": connection.port,
-                "database": connection.database,
-                "username": connection.username,
-                "password": decrypt_password(connection.password_encrypted)
-            }
-        )
-        
+        # Build config and ensure pool is warm
+        config = {
+            "host": connection.host,
+            "port": connection.port,
+            "database": connection.database,
+            "username": connection.username,
+            "password": decrypt_password(connection.password_encrypted),
+            "ssl_enabled": connection.ssl_enabled
+        }
+
+        # Ensure pool is warm before query (eliminates cold start)
+        QueryEngine.ensure_pool_warm(connection.db_type, config)
+
         # Execute query
         arrow_bytes, row_count, query_time = await QueryEngine.execute_query(
-            conn_string,
+            connection.db_type,
+            config,
             report.query
         )
         
@@ -354,19 +356,21 @@ async def execute_grid_query(
     
     # 3. Execute
     try:
-        conn_string = QueryEngine.build_connection_string(
-            connection.db_type,
-            {
-                'host': connection.host,
-                'port': connection.port,
-                'database': connection.database,
-                'username': connection.username,
-                'password': decrypt_password(connection.password_encrypted)
-            }
-        )
-        
+        config = {
+            'host': connection.host,
+            'port': connection.port,
+            'database': connection.database,
+            'username': connection.username,
+            'password': decrypt_password(connection.password_encrypted),
+            'ssl_enabled': connection.ssl_enabled
+        }
+
+        # Ensure pool is warm before query (eliminates cold start)
+        QueryEngine.ensure_pool_warm(connection.db_type, config)
+
         rows, total, elapsed = await query_engine.execute_grid_query(
-            conn_string,
+            connection.db_type,
+            config,
             report.query,  # Base query
             request
         )
@@ -404,19 +408,21 @@ async def execute_pivot_drill(
     
     # 3. Execute
     try:
-        conn_string = QueryEngine.build_connection_string(
-            connection.db_type,
-            {
-                'host': connection.host,
-                'port': connection.port,
-                'database': connection.database,
-                'username': connection.username,
-                'password': decrypt_password(connection.password_encrypted)
-            }
-        )
-        
+        config = {
+            'host': connection.host,
+            'port': connection.port,
+            'database': connection.database,
+            'username': connection.username,
+            'password': decrypt_password(connection.password_encrypted),
+            'ssl_enabled': connection.ssl_enabled
+        }
+
+        # Ensure pool is warm before query (eliminates cold start)
+        QueryEngine.ensure_pool_warm(connection.db_type, config)
+
         rows, total, elapsed_query = await query_engine.execute_pivot_drill(
-            conn_string,
+            connection.db_type,
+            config,
             report.query,  # Base query
             request
         )
@@ -433,4 +439,3 @@ async def execute_pivot_drill(
     except Exception as e:
         logger.error(f"❌ PIVOT DRILL Error Report {report_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-

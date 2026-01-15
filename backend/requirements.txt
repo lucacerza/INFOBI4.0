@@ -1,5 +1,5 @@
 # High-performance backend with:
-# - ConnectorX for 10x faster DB reads
+# - SQLAlchemy Connection Pooling for warm connections
 # - Redis/Dragonfly caching
 # - Arrow IPC streaming
 # - Async everything
@@ -12,7 +12,6 @@ pydantic-settings==2.1.0
 # Database
 sqlalchemy[asyncio]==2.0.25
 aiosqlite==0.19.0
-connectorx==0.3.2
 pyodbc==5.0.1
 psycopg2-binary==2.9.9
 pymysql==1.1.0

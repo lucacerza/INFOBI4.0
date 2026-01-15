@@ -1,8 +1,9 @@
 """
 High-Performance Query Engine
-- ConnectorX: 10x faster than pandas for DB reads
-- Polars: Blazing fast DataFrame operations
-- Arrow IPC: Zero-copy serialization
+- SQLAlchemy Connection Pooling: Pre-warmed connections eliminate cold start
+- Polars DataFrame: Blazing fast in-memory operations
+- Arrow IPC: Zero-copy binary serialization
+- ThreadPoolExecutor: Non-blocking async DB queries
 """
 import logging
 import hashlib
@@ -14,70 +15,70 @@ import polars as pl
 import pyarrow as pa
 import pyarrow.ipc as ipc
 from io import BytesIO
-from urllib.parse import quote_plus
+from sqlalchemy import text
 from app.models.schemas import GridRequest, PivotDrillRequest
+from app.core.engine_pool import get_engine
 
 logger = logging.getLogger(__name__)
 
 # Thread pool for blocking DB operations
+# Conservative: 4 workers to avoid pool exhaustion
 _executor = ThreadPoolExecutor(max_workers=4)
+
+# Track which connections have been warmed this session
+_warmed_connections: set = set()
 
 class QueryEngine:
     """Execute queries and return Arrow IPC format"""
-    
+
     @staticmethod
-    def build_connection_string(conn_type: str, config: dict) -> str:
-        """Build connection string for ConnectorX with optimizations"""
-        # URL-encode password to handle special characters
-        password = quote_plus(config['password'])
-        username = quote_plus(config['username'])
-        
-        if conn_type == "mssql":
-            # Optimized SQL Server connection string
-            # - TrustServerCertificate: Skip SSL verification (faster)
-            # - Connection Timeout: 30 seconds
-            # - ApplicationIntent: ReadOnly for analytics queries
-            return (
-                f"mssql://{username}:{password}@{config['host']}:{config.get('port', 1433)}/{config['database']}"
-                f"?TrustServerCertificate=true"
-                f"&Connection+Timeout=30"
-                f"&ApplicationIntent=ReadOnly"
-            )
-        elif conn_type == "postgresql":
-            return (
-                f"postgresql://{username}:{password}@{config['host']}:{config.get('port', 5432)}/{config['database']}"
-                f"?connect_timeout=30"
-            )
-        elif conn_type == "mysql":
-            return (
-                f"mysql://{username}:{password}@{config['host']}:{config.get('port', 3306)}/{config['database']}"
-                f"?connect_timeout=30"
-            )
-        else:
-            raise ValueError(f"Unsupported database type: {conn_type}")
-    
+    def ensure_pool_warm(conn_type: str, config: dict) -> None:
+        """
+        Ensure connection pool is warmed before executing query.
+        This eliminates cold start delays by pre-establishing connections.
+        Only warms once per unique connection per session.
+        """
+        pool_key = f"{conn_type}://{config['host']}:{config.get('port', 0)}/{config['database']}"
+
+        if pool_key not in _warmed_connections:
+            logger.info(f"🔥 Pre-warming pool for first query: {pool_key}")
+            try:
+                engine = get_engine(conn_type, config)
+                with engine.connect() as conn:
+                    conn.execute(text("SELECT 1"))
+                _warmed_connections.add(pool_key)
+            except Exception as e:
+                logger.warning(f"Pool warm failed (will retry on query): {e}")
+
     @staticmethod
-    def _execute_query_sync(conn_string: str, query: str) -> pa.Table:
-        """Synchronous query execution (runs in thread pool)"""
-        import connectorx as cx
-        return cx.read_sql(conn_string, query, return_type="arrow")
-    
+    def _execute_query_sync(db_type: str, config: dict, query: str) -> pa.Table:
+        """Synchronous query execution using SQLAlchemy Pool"""
+        engine = get_engine(db_type, config)
+        with engine.connect() as conn:
+            # Polars legge usando la connessione aperta del pool
+            df = pl.read_database(query, connection=conn)
+            return df.to_arrow()
+
+    @staticmethod
+    def _execute_df_sync(db_type: str, config: dict, query: str) -> pl.DataFrame:
+        """Synchronous query execution returning Polars DataFrame (for Pivot/Split)"""
+        engine = get_engine(db_type, config)
+        with engine.connect() as conn:
+            return pl.read_database(query, connection=conn)
+
     @staticmethod
     async def execute_query(
-        conn_string: str,
+        db_type: str,
+        config: dict,
         query: str,
         limit: Optional[int] = None
     ) -> tuple[bytes, int, float]:
-        """
-        Execute query and return Arrow IPC bytes
-        Returns: (arrow_bytes, row_count, execution_time_ms)
-        """
         start = time.perf_counter()
         
         try:
             # Apply limit if specified
             if limit:
-                if "mssql" in conn_string:
+                if db_type == "mssql":
                     query = f"SELECT TOP {limit} * FROM ({query}) AS subq"
                 else:
                     query = f"SELECT * FROM ({query}) AS subq LIMIT {limit}"
@@ -87,7 +88,8 @@ class QueryEngine:
             arrow_table = await loop.run_in_executor(
                 _executor,
                 QueryEngine._execute_query_sync,
-                conn_string,
+                db_type,
+                config,
                 query
             )
             
@@ -110,7 +112,8 @@ class QueryEngine:
     
     @staticmethod
     async def execute_pivot(
-        conn_string: str,
+        db_type: str,
+        config: dict,
         base_query: str,
         group_by: List[str],
         metrics: List[Dict[str, Any]],
@@ -124,7 +127,7 @@ class QueryEngine:
         start_total = time.perf_counter()
         
         try:
-            is_mssql = "mssql" in conn_string
+            is_mssql = db_type == "mssql"
 
             logger.info(f"🔍 execute_pivot called with groups={group_by}, metrics={len(metrics)}")
             
@@ -140,7 +143,8 @@ class QueryEngine:
                 arrow_table = await loop.run_in_executor(
                     _executor,
                     QueryEngine._execute_query_sync,
-                    conn_string,
+                    db_type,
+                    config,
                     limited_query
                 )
             
@@ -154,44 +158,6 @@ class QueryEngine:
                 logger.info(f"📊 FLAT TABLE mode: {arrow_table.num_rows} rows, {len(arrow_table.schema)} columns ({elapsed:.1f}ms)")
                 return sink.getvalue(), arrow_table.num_rows, elapsed
 
-            # CASE 2: No group_by but has metrics → SELECT only specified columns (no aggregation!)
-            # User wants to see specific columns from the raw data (like a filtered view)
-            if not group_by and metrics:
-                row_limit = limit if limit else 10000
-
-                # Build SELECT for requested columns only
-                select_cols = []
-                for m in metrics:
-                    field = m.get('field', '')
-                    if field:
-                        if is_mssql:
-                            select_cols.append(f'[{field}]')
-                        else:
-                            select_cols.append(f'"{field}"')
-
-                if not select_cols:
-                    select_cols = ['*']
-
-                select_clause = ', '.join(select_cols)
-                limited_query = f"SELECT TOP {row_limit} {select_clause} FROM ({base_query}) AS raw_data" if is_mssql else f"SELECT {select_clause} FROM ({base_query}) AS raw_data LIMIT {row_limit}"
-
-                loop = asyncio.get_event_loop()
-                arrow_table = await loop.run_in_executor(
-                    _executor,
-                    QueryEngine._execute_query_sync,
-                    conn_string,
-                    limited_query
-                )
-                elapsed_sql = (time.perf_counter() - start_sql) * 1000
-
-                sink = BytesIO()
-                with ipc.new_stream(sink, arrow_table.schema) as writer:
-                    writer.write_table(arrow_table)
-
-                elapsed_total = (time.perf_counter() - start_total) * 1000
-                logger.info(f"📊 COLUMN SELECT mode: {arrow_table.num_rows} rows, {len(select_cols)} cols. SQL: {elapsed_sql:.1f}ms, Total: {elapsed_total:.1f}ms")
-                return sink.getvalue(), arrow_table.num_rows, elapsed_total
-            
             # Build SELECT clause
             start_build = time.perf_counter()
             select_parts = []
@@ -226,7 +192,10 @@ class QueryEngine:
                     field = m.get('field', '')
                     name = m.get('name', field)
                     if field:
-                        if is_mssql:
+                        # FIX: Handle COUNT(*) correctly without quoting *
+                        if field == '*':
+                            select_parts.append(f'{agg}(*) AS [{name}]' if is_mssql else f'{agg}(*) AS "{name}"')
+                        elif is_mssql:
                             select_parts.append(f'{agg}([{field}]) AS [{name}]')
                         else:
                             select_parts.append(f'{agg}("{field}") AS "{name}"')
@@ -306,7 +275,8 @@ class QueryEngine:
             arrow_table = await loop.run_in_executor(
                 _executor,
                 QueryEngine._execute_query_sync,
-                conn_string,
+                db_type,
+                config,
                 sql
             )
             
@@ -328,7 +298,8 @@ class QueryEngine:
     
     @staticmethod
     async def execute_grid_query(
-        conn_string: str,
+        db_type: str,
+        config: dict,
         base_query: str,
         request: GridRequest
     ) -> tuple[List[Dict[str, Any]], int, float]:
@@ -339,8 +310,6 @@ class QueryEngine:
         start = time.perf_counter()
         
         try:
-            import connectorx as cx
-            
             # 1. Build WHERE clause (Basic implementation - requires sanitization in prod)
             where_clauses = []
             
@@ -374,7 +343,7 @@ class QueryEngine:
             order_sql = " ORDER BY " + ", ".join(order_clauses) if order_clauses else ""
             
             # 3. Construct SQL
-            is_mssql = "mssql" in conn_string.lower()
+            is_mssql = db_type == "mssql"
             limit = request.endRow - request.startRow
             offset = request.startRow
             
@@ -384,8 +353,11 @@ class QueryEngine:
             
             # Get Total Count
             count_query = f"SELECT COUNT(*) as total FROM ({full_sql_structure}) AS count_tbl"
-            count_df = cx.read_sql(conn_string, count_query)
-            total_rows = int(count_df['total'][0]) if not count_df.empty else 0
+            
+            engine = get_engine(db_type, config)
+            with engine.connect() as conn:
+                count_df = pl.read_database(count_query, connection=conn)
+                total_rows = int(count_df['total'][0]) if not count_df.is_empty() else 0
             
             # Fetch Page
             if is_mssql:
@@ -396,7 +368,9 @@ class QueryEngine:
                 data_query = f"{full_sql_structure} {order_sql} LIMIT {limit} OFFSET {offset}"
             
             # Execute
-            data_df = cx.read_sql(conn_string, data_query)
+            with engine.connect() as conn:
+                data_df = pl.read_database(data_query, connection=conn)
+            
             rows = data_df.to_dicts()
             
             elapsed = (time.perf_counter() - start) * 1000
@@ -410,7 +384,8 @@ class QueryEngine:
 
     @staticmethod
     async def execute_pivot_drill(
-        conn_string: str,
+        db_type: str,
+        config: dict,
         base_query: str,
         request: PivotDrillRequest
     ) -> tuple[List[Dict[str, Any]], int, float]:
@@ -420,14 +395,12 @@ class QueryEngine:
         """
         start = time.perf_counter()
         try:
-            import connectorx as cx
-            
             # 1. Determine which column we are expanding
             current_level = len(request.groupKeys)
             
             # Special Case: No Groups Defined -> Return Flat Paginated Data
             if len(request.rowGroupCols) == 0:
-                 is_mssql = "mssql" in conn_string or "driver=sql server" in conn_string.lower()
+                 is_mssql = db_type == "mssql"
                  
                  # Determine columns to select
                  select_parts = []
@@ -489,7 +462,10 @@ class QueryEngine:
                      # Standard SQL (SQLite, Postgres, MySQL)
                      full_query = f"{base_select} LIMIT {limit} OFFSET {start_row}"
 
-                 data_df = cx.read_sql(conn_string, full_query, return_type="polars")
+                 engine = get_engine(db_type, config)
+                 with engine.connect() as conn:
+                     data_df = pl.read_database(full_query, connection=conn)
+                 
                  rows = data_df.to_dicts()
                  elapsed = (time.perf_counter() - start) * 1000
                  return rows, len(rows), elapsed
@@ -557,7 +533,7 @@ class QueryEngine:
             limit_val = (request.endRow or 1000) - (request.startRow or 0)
             offset_val = request.startRow or 0
             
-            is_mssql_drill = "mssql" in conn_string or "driver=sql server" in conn_string.lower()
+            is_mssql_drill = db_type == "mssql"
 
             if is_mssql_drill:
                 # MSSQL Pagination requires ORDER BY
@@ -582,7 +558,9 @@ class QueryEngine:
                 """
             
             # Execute
-            data_df = cx.read_sql(conn_string, full_query, return_type="polars")
+            engine = get_engine(db_type, config)
+            with engine.connect() as conn:
+                data_df = pl.read_database(full_query, connection=conn)
             rows = data_df.to_dicts()
             
             elapsed = (time.perf_counter() - start) * 1000
@@ -593,15 +571,16 @@ class QueryEngine:
             raise
 
     @staticmethod
-    async def get_column_values(conn_string: str, base_query: str, column: str) -> List[Any]:
+    async def get_column_values(db_type: str, config: dict, base_query: str, column: str) -> List[Any]:
         """Fetch distinct sorted values for a column (used for Pivot Headers)"""
         try:
-             import connectorx as cx
              # Sanitization
              clean_col = "".join(c for c in column if c.isalnum() or c in '_')
              
              query = f"SELECT DISTINCT {clean_col} FROM ({base_query}) AS base ORDER BY {clean_col}"
-             df = cx.read_sql(conn_string, query)
+             engine = get_engine(db_type, config)
+             with engine.connect() as conn:
+                 df = pl.read_database(query, connection=conn)
              
              # Handle potential None/Null values
              values = df[clean_col].to_list()

@@ -10,7 +10,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
-import BiGrid from '../components/BiGrid';
+import TreeDataGrid from '../components/TreeDataGrid';
 import BiGridConfig from '../components/BiGridConfig';
 import {
   ArrowLeft, Download, Settings, Loader2,
@@ -196,21 +196,17 @@ export default function ReportPivotPage() {
           />
         )}
 
-        {/* BiGrid Container - Always show, even with empty config (shows raw data) */}
+        {/* TreeDataGrid Container - Shows hierarchical data */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <BiGrid
-            reportId={reportId}
-            defaultGroupBy={pivotConfig.rows}
-            defaultSplitBy={pivotConfig.columns}
-            defaultMetrics={pivotConfig.values.map(v => ({
-              name: v.name,
-              field: v.field,
-              type: 'sum',
-              aggregation: v.aggregation
-            }))}
-            previewMode={showBuilder} // When config sidebar is open, use preview mode (limit 100 rows)
-            className="flex-1"
-          />
+          <div className="flex-1">
+            <TreeDataGrid
+              reportId={reportId}
+              rowGroups={pivotConfig.rows}
+              valueCols={pivotConfig.values}
+              pivotCols={pivotConfig.columns}
+              previewMode={false}
+            />
+          </div>
         </div>
       </div>
 

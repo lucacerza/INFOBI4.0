@@ -19,9 +19,10 @@ interface TreeDataGridProps {
   rowGroups: string[];
   valueCols: any[];
   pivotCols?: string[];
+  previewMode?: boolean;  // Limit to 100 rows for preview
 }
 
-export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols = [] }: TreeDataGridProps) {
+export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols = [], previewMode = false }: TreeDataGridProps) {
   // --- STATE ---
   const [data, setData] = useState<any[]>([]); 
   const [expanded, setExpanded] = useState<ExpandedState>({});
@@ -117,9 +118,19 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
 
 
   // --- API FETCH ---
-  const PAGE_SIZE = 1000;
+  const PAGE_SIZE = previewMode ? 100 : 1000;
   
   const fetchNodeData = async (nodePath: string[], startRow = 0, endRow = PAGE_SIZE) => { 
+    // In preview mode, block loading beyond first 100 rows total
+    if (previewMode && startRow >= 100) {
+      return [];
+    }
+    
+    // In preview mode, cap endRow at 100
+    if (previewMode && endRow > 100) {
+      endRow = 100;
+    }
+    
     const tStart = performance.now();
     try {
         const response = await reportsApi.executePivotDrill(reportId, {

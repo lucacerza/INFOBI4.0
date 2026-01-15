@@ -4,7 +4,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from typing import List
 from pydantic import BaseModel
 from app.db.database import get_db, Connection
@@ -12,12 +12,13 @@ from app.core.deps import get_current_user, get_current_admin
 from app.core.security import encrypt_password, decrypt_password
 from app.models.schemas import ConnectionCreate, ConnectionUpdate, ConnectionResponse
 from app.services.query_engine import QueryEngine
+from app.core.engine_pool import get_engine
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Thread pool for blocking operations
-_test_executor = ThreadPoolExecutor(max_workers=2)
+_test_executor = ThreadPoolExecutor(max_workers=4)
 
 class TestConnectionRequest(BaseModel):
     db_type: str
@@ -28,19 +29,47 @@ class TestConnectionRequest(BaseModel):
     password: str
     ssl_enabled: bool = False
 
-def _test_connection_sync(conn_string: str) -> dict:
-    """Synchronous connection test (runs in thread pool)"""
-    import connectorx as cx
+def _test_connection_sync(db_type: str, config: dict) -> dict:
+    """Synchronous connection test using SQLAlchemy Engine Pool"""
     import time
-    
+
     start = time.perf_counter()
-    
-    # Simple test query
-    test_query = "SELECT 1 AS test"
-    result = cx.read_sql(conn_string, test_query, return_type="arrow")
-    
+
+    # Ottiene l'engine dal pool (o ne crea uno nuovo)
+    engine = get_engine(db_type, config)
+
+    # Esegue una query leggera per validare la connessione e "scaldare" il pool
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
+
     elapsed = (time.perf_counter() - start) * 1000
-    return {"rows": result.num_rows, "time_ms": elapsed}
+    return {"rows": 1, "time_ms": elapsed}
+
+def _format_connection_error(e: Exception, host: str, database: str) -> str:
+    """Traduci errori tecnici in messaggi utente comprensibili"""
+    import socket
+    try:
+        resolved_ip = socket.gethostbyname(host)
+        ip_info = f" (IP risolto da Docker: {resolved_ip})"
+        
+        # Rileva IP interni di Docker Desktop (spesso mappati sull'host)
+        if resolved_ip.startswith("192.168.65.") or resolved_ip == "127.0.0.1" or resolved_ip.startswith("172."):
+             ip_info += " [⚠️ È IL TUO PC LOCALE!]"
+    except:
+        ip_info = " (Docker non riesce a risolvere questo nome)"
+
+    error_msg = str(e)
+    if "Login failed" in error_msg or "Login non riuscito" in error_msg or "18456" in error_msg:
+        return "Login fallito: username o password errati"
+    elif "Cannot open database" in error_msg or "Non è possibile aprire il database" in error_msg or "4060" in error_msg:
+        return f"Login OK, ma il database '{database}' non esiste sul server {host}{ip_info}. Docker sta puntando al server sbagliato (probabilmente il tuo PC). Usa l'IP del server."
+    elif "server was not found" in error_msg or "Connection refused" in error_msg or "10061" in error_msg:
+        return f"Server {host}{ip_info} non raggiungibile. Docker non vede i nomi NetBIOS di Windows (prova a usare l'IP)."
+    elif "tcp connect error" in error_msg.lower():
+        return f"Impossibile connettersi a {host}. Verifica indirizzo e porta."
+    elif "timed out" in error_msg.lower():
+        return "Timeout connessione. Il server potrebbe essere lento o irraggiungibile."
+    return error_msg
 
 @router.post("/test-new")
 async def test_new_connection(
@@ -49,25 +78,28 @@ async def test_new_connection(
 ):
     """Test a connection BEFORE saving it (with automatic warm-up)"""
     try:
-        conn_string = QueryEngine.build_connection_string(
-            request.db_type,
-            {
-                "host": request.host,
-                "port": request.port,
-                "database": request.database,
-                "username": request.username,
-                "password": request.password
-            }
-        )
+        config = {
+            "host": request.host,
+            "port": request.port,
+            "database": request.database,
+            "username": request.username,
+            "password": request.password,
+            "ssl_enabled": request.ssl_enabled
+        }
 
         logger.info(f"Testing connection to {request.host}:{request.port}/{request.database}")
 
-        # Run in thread pool with timeout
+        # Run in thread pool with timeout (increased to 180s for cold start)
         loop = asyncio.get_event_loop()
         try:
             result = await asyncio.wait_for(
-                loop.run_in_executor(_test_executor, _test_connection_sync, conn_string),
-                timeout=30.0  # 30 second timeout
+                loop.run_in_executor(
+                    _test_executor,
+                    _test_connection_sync,
+                    request.db_type,
+                    config
+                ),
+                timeout=180.0  # 180 second timeout for cold start + warm-up
             )
         except asyncio.TimeoutError:
             raise HTTPException(status_code=408, detail="Timeout: la connessione ha impiegato troppo tempo")
@@ -95,21 +127,8 @@ async def test_new_connection(
     except HTTPException:
         raise
     except Exception as e:
-        error_msg = str(e)
-        logger.error(f"Connection test failed: {error_msg}")
-        
-        # Clean up error message
-        if "Login failed" in error_msg:
-            error_msg = "Login fallito: username o password errati"
-        elif "Cannot open database" in error_msg:
-            error_msg = "Database non trovato"
-        elif "server was not found" in error_msg or "Connection refused" in error_msg:
-            error_msg = "Server non raggiungibile. Verifica host e porta."
-        elif "tcp connect error" in error_msg.lower():
-            error_msg = "Server non raggiungibile. Verifica host e porta."
-        elif "timed out" in error_msg.lower():
-            error_msg = "Timeout connessione. Il server potrebbe essere lento o irraggiungibile."
-        
+        logger.error(f"Connection test failed: {e}")
+        error_msg = _format_connection_error(e, request.host, request.database)
         raise HTTPException(status_code=400, detail=error_msg)
 
 @router.get("", response_model=List[ConnectionResponse])
@@ -238,29 +257,33 @@ async def test_connection(
         raise HTTPException(status_code=404, detail="Connection not found")
 
     try:
-        conn_string = QueryEngine.build_connection_string(
-            conn.db_type,
-            {
-                "host": conn.host,
-                "port": conn.port,
-                "database": conn.database,
-                "username": conn.username,
-                "password": decrypt_password(conn.password_encrypted)
-            }
-        )
+        config = {
+            "host": conn.host,
+            "port": conn.port,
+            "database": conn.database,
+            "username": conn.username,
+            "password": decrypt_password(conn.password_encrypted),
+            "ssl_enabled": conn.ssl_enabled
+        }
 
-        # Run in thread pool with timeout
+        # Run in thread pool with timeout (increased to 180s for cold start)
         loop = asyncio.get_event_loop()
         result = await asyncio.wait_for(
-            loop.run_in_executor(_test_executor, _test_connection_sync, conn_string),
-            timeout=30.0
+            loop.run_in_executor(
+                _test_executor,
+                _test_connection_sync,
+                conn.db_type,
+                config
+            ),
+            timeout=180.0  # 180 second timeout for cold start + warm-up
         )
 
         return {"success": True, "message": f"Connessione OK ({result['time_ms']:.0f}ms)"}
     except asyncio.TimeoutError:
         return {"success": False, "message": "Timeout: connessione troppo lenta"}
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        msg = _format_connection_error(e, conn.host, conn.database)
+        return {"success": False, "message": msg}
 
 
 @router.post("/warmup-all")
@@ -287,4 +310,30 @@ async def warmup_all_connections(
     return {
         "status": "started",
         "message": "Warm-up di tutte le connessioni avviato in background. Controlla i log per lo stato."
+    }
+
+
+@router.get("/pool-status")
+async def get_pool_status(
+    user = Depends(get_current_admin)
+):
+    """
+    Get status of all connection pools.
+
+    Returns information about each pool:
+    - size: configured pool size
+    - checked_out: connections currently in use
+    - checked_in: connections available in pool
+    - overflow: extra connections beyond pool_size
+
+    Requires admin role.
+    """
+    from app.core.engine_pool import get_pool_status
+
+    status = get_pool_status()
+
+    return {
+        "pools": status,
+        "pool_count": len(status),
+        "message": "Connection pool status"
     }

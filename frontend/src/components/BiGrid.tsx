@@ -10,7 +10,6 @@
  * - Row virtualization for 1M+ rows performance
  */
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import debounce from 'lodash.debounce';
 import { Loader2, RefreshCw, ChevronRight, ChevronDown } from 'lucide-react';
 import * as arrow from 'apache-arrow';
@@ -436,6 +435,7 @@ export default function BiGrid({
   });
   const [pivotResult, setPivotResult] = useState<any>(null);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const hasLoadedSavedConfig = useRef(false);
 
   // Update config when defaults change and execute pivot
   useEffect(() => {
@@ -461,7 +461,7 @@ export default function BiGrid({
     if (schema && (defaultGroupBy.length > 0 || defaultSplitBy.length > 0 || defaultMetrics.length > 0)) {
       console.log('🔵 [BiGrid] Executing pivot with config:', newConfig);
       executePivot(newConfig);
-    } else if (schema) {
+    } else if (schema && !hasLoadedSavedConfig.current) {
       // Schema loaded but config empty - show empty state
       console.log('⚪ [BiGrid] Config is empty, showing empty state');
       setPivotResult({
@@ -472,7 +472,7 @@ export default function BiGrid({
       });
       setIsLoading(false);
     }
-  }, [defaultGroupBy, defaultSplitBy, defaultMetrics, schema]);
+  }, [defaultGroupBy, defaultSplitBy, defaultMetrics, schema, previewMode]);
 
   // Load schema on mount
   useEffect(() => {
@@ -492,12 +492,56 @@ export default function BiGrid({
       const data = await response.json();
       setSchema(data);
 
+      // AUTO-LOAD: If no config provided via props OR if we are in Viewer mode (no onConfigChange)
+      // we prefer the saved config over the SQL defaults passed as props.
+      if ((defaultGroupBy.length === 0 && defaultSplitBy.length === 0 && defaultMetrics.length === 0) || !onConfigChange) {
+         console.log('🔵 [BiGrid] Auto-loading saved config (Viewer mode or empty props)...');
+         loadSavedConfig();
+      }
+
       // DON'T execute pivot here - let the useEffect at line 302 handle it
       // This avoids race conditions and duplicate executions
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       setIsLoading(false);
+    }
+  };
+
+  const loadSavedConfig = async () => {
+    try {
+      const response = await fetch(`/api/pivot/${reportId}/config`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      if (!response.ok) return;
+      
+      const saved = await response.json();
+      
+      // Map DB format to BiGrid format
+      if (saved.rows?.length || saved.columns?.length || saved.values?.length) {
+          const newConfig: PivotConfig = {
+              group_by: saved.rows || [],
+              split_by: saved.columns || [],
+              metrics: (saved.values || []).map((v: any) => ({
+                  name: v.name || v.field || v.id,
+                  field: v.field || v.id,
+                  type: v.type || 'number',
+                  aggregation: v.aggregation || 'SUM',
+                  revenueField: v.revenueField,
+                  costField: v.costField
+              })),
+              filters: {}
+          };
+          
+          console.log('🔵 [BiGrid] Auto-loaded saved config:', newConfig);
+          hasLoadedSavedConfig.current = true;
+          setCurrentConfig(newConfig);
+          executePivot(newConfig);
+      }
+    } catch (e) {
+      console.warn('Failed to load saved config', e);
     }
   };
 
@@ -512,10 +556,19 @@ export default function BiGrid({
       // Call backend with multi-level split_by
       const t1 = performance.now();
 
+      // SANITIZATION: Ensure arrays are arrays and objects are objects
+      // This prevents 422 errors if saved config has nulls (e.g. from legacy data)
+      const sanitizedConfig = {
+        group_by: Array.isArray(config.group_by) ? config.group_by : [],
+        split_by: Array.isArray(config.split_by) ? config.split_by : [],
+        metrics: Array.isArray(config.metrics) ? config.metrics.filter(m => m && m.name) : [],
+        filters: config.filters || {}
+      };
+
       // PREVIEW MODE: Add limit=100 for fast configuration
       const requestBody = previewMode
-        ? { ...config, limit: 100 }
-        : config;
+        ? { ...sanitizedConfig, limit: 100 }
+        : sanitizedConfig;
 
       const response = await fetch(`/api/pivot/${reportId}`, {
         method: 'POST',
@@ -571,6 +624,10 @@ export default function BiGrid({
         dataRows: result.data.length,
         columns: result.columns.length
       });
+
+      // OPTIMIZATION: Calculate column widths BEFORE setting state to avoid re-renders/flashing
+      const optimizedColumns = calculateOptimalWidths(result.columns, result.data, result.grouping);
+      result.columns = optimizedColumns;
 
       setPivotResult(result);
       const t9 = performance.now();
@@ -646,153 +703,7 @@ export default function BiGrid({
       toggleRow
     );
 
-    // After rendering, adjust DOM widths to ensure headers and cells align
-    // This forces visible auto-resize immediately without relying on state updates
-    const adjustWidths = () => {
-      try {
-        const root = containerRef.current!;
-        const headerCells = Array.from(root.querySelectorAll('.bigrid-header .bigrid-header-cell')) as HTMLElement[];
-        const bodyRows = Array.from(root.querySelectorAll('.bigrid-body .bigrid-row')) as HTMLElement[];
-
-        if (!headerCells.length || !bodyRows.length) return;
-
-        // For each header cell index, compute max width between header and first N visible rows
-        const sampleCount = Math.min(20, bodyRows.length);
-
-        headerCells.forEach((hCell, colIdx) => {
-          let maxW = 0;
-          // measure header text
-          const hdrRect = hCell.getBoundingClientRect();
-          maxW = Math.max(maxW, hdrRect.width);
-
-          // measure sample cells in this column
-          for (let r = 0; r < sampleCount; r++) {
-            const row = bodyRows[r];
-            if (!row) continue;
-            const cells = Array.from(row.querySelectorAll(':scope > .bigrid-cell, :scope > .bigrid-cell.tree-col')) as HTMLElement[];
-            const cell = cells[colIdx];
-            if (!cell) continue;
-            const rect = cell.getBoundingClientRect();
-            maxW = Math.max(maxW, rect.width);
-          }
-
-          // add small padding
-          const finalW = Math.ceil(maxW) + 24;
-
-          // apply to header and all body cells in column
-          hCell.style.width = `${finalW}px`;
-          hCell.style.flex = `0 0 ${finalW}px`;
-
-          bodyRows.forEach(row => {
-            const cells = Array.from(row.querySelectorAll(':scope > .bigrid-cell, :scope > .bigrid-cell.tree-col')) as HTMLElement[];
-            const cell = cells[colIdx];
-            if (cell) {
-              cell.style.width = `${finalW}px`;
-              cell.style.flex = `0 0 ${finalW}px`;
-            }
-          });
-        });
-      } catch (e) {
-        console.warn('adjustWidths failed', e);
-      }
-    };
-
-    // Delay slightly to allow DOM to paint
-    setTimeout(adjustWidths, 30);
   }, [pivotResult, expandedRows]);
-
-  // Auto-resize columns: compute optimal widths based on header and sample data
-  useEffect(() => {
-    if (!pivotResult) return;
-
-    // Create canvas for text measurement
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    // Match default font used in app (tailwind base)
-    ctx.font = '14px Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial';
-
-    const measureText = (text: string) => {
-      try {
-        return Math.ceil(ctx.measureText(String(text || '')).width);
-      } catch (e) {
-        return 80;
-      }
-    };
-
-    const flatCols: ColumnDef[] = flattenColumns(pivotResult.columns || []);
-
-    // Sample up to N rows for content width
-    const sampleRows = (pivotResult.data || []).slice(0, 200);
-
-    const updatedCols = flatCols.map(col => {
-      // Header width
-      const headerW = measureText(col.header) + 24; // padding
-
-      if (col.meta?.isTreeColumn) {
-        // Tree column: account for indentation and expand button
-        const indentPerLevel = 12;
-        const maxDepth = (pivotResult.grouping || []).length || 1;
-        // compute longest value among grouping fields
-        let maxText = 0;
-        sampleRows.forEach((r: any) => {
-          (pivotResult.grouping || []).forEach((g: any) => {
-            maxText = Math.max(maxText, String(r[g] || '').length);
-          });
-        });
-        const textW = maxText * 7; // approximate char width
-        const calc = Math.max(160, Math.min(600, textW + (maxDepth * indentPerLevel) + 60));
-        return { ...col, size: Math.max(calc, headerW) };
-      }
-
-      // For data columns, measure a few sample values to determine width
-      let maxContentW = 0;
-      sampleRows.forEach((r: any) => {
-        const v = r[col.accessorKey || ''];
-        const formatted = (col.meta?.isNumber && typeof v === 'number') ? v.toLocaleString() : (v || '');
-        maxContentW = Math.max(maxContentW, measureText(formatted));
-      });
-
-      // Minimum/maximum constraints
-      const minW = 80;
-      const maxW = 400;
-      const contentW = Math.max(minW, Math.min(maxW, maxContentW + 24));
-
-      const newSize = Math.max(headerW, contentW);
-      return { ...col, size: newSize };
-    });
-
-    // Rebuild hierarchical columns with updated sizes
-    function rebuildWithSizes(cols: ColumnDef[]): ColumnDef[] {
-      return cols.map(c => {
-        if (c.columns && c.columns.length > 0) {
-          const children = rebuildWithSizes(c.columns);
-          const total = children.reduce((s, ch) => s + ch.size, 0);
-          return { ...c, columns: children, size: total };
-        }
-        const leaf = updatedCols.find(u => u.accessorKey === c.accessorKey && u.header === c.header);
-        return leaf ? { ...c, size: leaf.size } : c;
-      });
-    }
-
-    const newColumns = rebuildWithSizes(pivotResult.columns || []);
-
-    // Compare sizes to avoid unnecessary state updates
-    let changed = false;
-    const oldFlat = flattenColumns(pivotResult.columns || []);
-    const newFlat = flattenColumns(newColumns);
-    if (oldFlat.length === newFlat.length) {
-      for (let i = 0; i < oldFlat.length; i++) {
-        if (oldFlat[i].size !== newFlat[i].size) { changed = true; break; }
-      }
-    } else {
-      changed = true;
-    }
-
-    if (changed) {
-      setPivotResult({ ...pivotResult, columns: newColumns });
-    }
-  }, [pivotResult]);
 
   return (
     <div className={`flex flex-col h-full ${className}`}>
@@ -853,6 +764,73 @@ export default function BiGrid({
   );
 }
 
+// --- HELPER: Calculate Optimal Widths (Moved out of component to avoid re-renders) ---
+function calculateOptimalWidths(columns: ColumnDef[], data: any[], grouping: string[]): ColumnDef[] {
+    // Create canvas for text measurement
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return columns;
+    
+    // Match default font used in app
+    ctx.font = '14px Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial';
+
+    const measureText = (text: string) => {
+      try {
+        return Math.ceil(ctx.measureText(String(text || '')).width);
+      } catch (e) {
+        return 80;
+      }
+    };
+
+    const flatCols: ColumnDef[] = flattenColumns(columns || []);
+    const sampleRows = (data || []).slice(0, 200);
+
+    const updatedCols = flatCols.map(col => {
+      // Header width
+      const headerW = measureText(col.header) + 24; 
+
+      if (col.meta?.isTreeColumn) {
+        const indentPerLevel = 12;
+        const maxDepth = (grouping || []).length || 1;
+        let maxText = 0;
+        sampleRows.forEach((r: any) => {
+          (grouping || []).forEach((g: any) => {
+            maxText = Math.max(maxText, String(r[g] || '').length);
+          });
+        });
+        const textW = maxText * 7; 
+        const calc = Math.max(160, Math.min(600, textW + (maxDepth * indentPerLevel) + 60));
+        return { ...col, size: Math.max(calc, headerW) };
+      }
+
+      let maxContentW = 0;
+      sampleRows.forEach((r: any) => {
+        const v = r[col.accessorKey || ''];
+        const formatted = (col.meta?.isNumber && typeof v === 'number') ? v.toLocaleString() : (v || '');
+        maxContentW = Math.max(maxContentW, measureText(formatted));
+      });
+
+      const minW = 80;
+      const maxW = 400;
+      const contentW = Math.max(minW, Math.min(maxW, maxContentW + 24));
+      return { ...col, size: Math.max(headerW, contentW) };
+    });
+
+    function rebuildWithSizes(cols: ColumnDef[]): ColumnDef[] {
+      return cols.map(c => {
+        if (c.columns && c.columns.length > 0) {
+          const children = rebuildWithSizes(c.columns);
+          const total = children.reduce((s, ch) => s + ch.size, 0);
+          return { ...c, columns: children, size: total };
+        }
+        const leaf = updatedCols.find(u => u.accessorKey === c.accessorKey && u.header === c.header);
+        return leaf ? { ...c, size: leaf.size } : c;
+      });
+    }
+
+    return rebuildWithSizes(columns);
+}
+
 // BiGrid rendering functions (adapted from newpivot/app.js)
 function renderBiGrid(
   container: HTMLDivElement,
@@ -877,8 +855,8 @@ function renderBiGrid(
 
   // Wrapper with horizontal scroll (both header and body scroll together)
   // IMPORTANT: Horizontal scroll container must allow sticky positioning
-  let html = '<div class="bigrid-scroll-wrapper" style="width: 100%; height: 100%; overflow-x: auto; overflow-y: hidden; position: relative;">';
-  html += '<div class="bigrid-table">';
+  let html = '<div class="bigrid-scroll-wrapper" style="width: 100%; height: 100%; overflow-x: auto; overflow-y: auto; position: relative;">';
+  html += '<div class="bigrid-table" style="min-width: 100%; display: inline-block;">';
 
   // Render header (fixed at top, scrolls horizontally with body)
   html += renderHeader(headerLevels, flatColumns);
@@ -943,7 +921,7 @@ function flattenColumns(columns: ColumnDef[]): ColumnDef[] {
 }
 
 function renderHeader(levels: ColumnDef[][], flatColumns: ColumnDef[]): string {
-  let html = '<div class="bigrid-header">';
+  let html = '<div class="bigrid-header" style="position: sticky; top: 0; z-index: 10; background-color: #f9fafb;">';
 
   // Find tree column size
   let treeColumnSize = 0;
@@ -953,7 +931,7 @@ function renderHeader(levels: ColumnDef[][], flatColumns: ColumnDef[]): string {
   }
 
   levels.forEach((level, levelIdx) => {
-    html += '<div class="bigrid-header-row">';
+    html += '<div class="bigrid-header-row" style="display: flex;">';
 
     let hasTreeColumn = false;
     level.forEach(cell => {
@@ -982,8 +960,8 @@ function renderHeader(levels: ColumnDef[][], flatColumns: ColumnDef[]): string {
         style="width: ${treeColumnSize}px; flex: 0 0 ${treeColumnSize}px; visibility: hidden; border: none;">
         &nbsp;
       </div>`;
-      const rowContent = html.substring(html.lastIndexOf('<div class="bigrid-header-row">') + 31);
-      html = html.substring(0, html.lastIndexOf('<div class="bigrid-header-row">') + 31);
+      const rowContent = html.substring(html.lastIndexOf('<div class="bigrid-header-row" style="display: flex;">') + 54);
+      html = html.substring(0, html.lastIndexOf('<div class="bigrid-header-row" style="display: flex;">') + 54);
       html += placeholder + rowContent;
     }
 
@@ -1005,7 +983,7 @@ function renderRow(
   const depth = row._depth || 0;
   const isExpanded = expandedRows.has(row._groupKey);
 
-  let html = `<div class="bigrid-row ${isGroup ? 'group-row' : ''}" data-depth="${depth}">`;
+  let html = `<div class="bigrid-row ${isGroup ? 'group-row' : ''}" data-depth="${depth}" style="display: flex; min-width: fit-content;">`;
 
   columns.forEach(col => {
     const isTreeColumn = col.meta?.isTreeColumn;

@@ -14,15 +14,15 @@ class Settings(BaseSettings):
     
     # Redis/Dragonfly cache
     REDIS_URL: str = "redis://localhost:6379"
-    CACHE_TTL: int = 3600  # 1 hour default
-    CACHE_TTL_PIVOT: int = 300  # 5 minutes for pivot results
+    CACHE_TTL: int = 7200  # 2 hours default
+    CACHE_TTL_PIVOT: int = 600  # 10 minutes for pivot results
     
     # CORS
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
+    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173", "http://localhost:8001"]
     
     # Query limits
-    MAX_ROWS_PREVIEW: int = 1000
-    MAX_ROWS_EXPORT: int = 1000000
+    MAX_ROWS_PREVIEW: int = 10000  # Increased for better UX
+    MAX_ROWS_EXPORT: int = 5000000  # 5M rows max
     QUERY_TIMEOUT: int = 300  # 5 minutes
     
     class Config:

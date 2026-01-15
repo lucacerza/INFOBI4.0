@@ -83,7 +83,7 @@ class Connection(Base):
 # REPORTS
 # ============================================
 class Report(Base):
-    """Report with query and saved Perspective.js configuration"""
+    """Report with query and BiGrid pivot configuration"""
     __tablename__ = "reports"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -97,34 +97,22 @@ class Report(Base):
     # Column metadata from query: [{name, type, label}]
     columns_config = Column(JSON, default=[])
     
-    # Perspective.js saved configuration (THE KEY!)
-    # This stores the complete view state that admin configured
+    # BiGrid pivot configuration (saved by admin)
+    # Stores the complete pivot state: rows, columns, metrics
     perspective_config = Column(JSON, default={})
     # Example:
     # {
-    #   "plugin": "Datagrid",
-    #   "plugin_config": {"columns": {}},
-    #   "group_by": ["Agente", "Cliente"],
-    #   "split_by": ["Anno"],
-    #   "columns": ["Venduto", "Costo"],
-    #   "sort": [["Venduto", "desc"]],
-    #   "filter": [],
-    #   "expressions": [],
-    #   "aggregates": {"Venduto": "sum", "Costo": "sum"}
+    #   "rows": ["Agente", "Cliente"],
+    #   "columns": ["Anno"],
+    #   "values": [
+    #     {"id": "v1", "name": "Venduto", "field": "Venduto", "aggregation": "SUM"}
+    #   ]
     # }
     
-    # Tabulator.js alternative configuration
+    # Legacy tabulator configuration (deprecated)
     tabulator_config = Column(JSON, default={})
-    # Example:
-    # {
-    #   "groupBy": ["Agente"],
-    #   "columns": ["Agente", "Venduto", "Costo"],
-    #   "aggregations": {"Venduto": "sum"},
-    #   "filters": [{"field": "Anno", "type": "=", "value": "2024"}],
-    #   "sort": [{"column": "Venduto", "dir": "desc"}]
-    # }
     
-    # Legacy fields (for backward compatibility)
+    # Configuration fields
     default_group_by = Column(JSON, default=[])
     default_metrics = Column(JSON, default=[])
     available_metrics = Column(JSON, default=[])

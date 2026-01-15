@@ -1,25 +1,26 @@
 """
 Connection Warm-Up System
-Eliminates cold start delays by initializing database connections at backend startup.
+Eliminates cold start delays by pre-initializing connection pools at backend startup.
 
 When warm-up runs:
 - Executes at backend container startup (before any user login)
-- Runs simple SELECT 1 queries on all databases used by reports
-- Connections are backend-side and shared across ALL users
+- Pre-initializes SQLAlchemy connection pools for all databases
+- Pools maintain persistent connections across ALL requests
 - Only happens ONCE per backend restart
 
 Benefits:
 - First query from ANY user on ANY PC is fast (no 195s wait)
 - Multi-database support (SQL Server, PostgreSQL, MySQL, etc.)
-- Connections persist until backend restart
+- Connections persist until backend restart (pooled, not recreated)
 """
 import logging
 import asyncio
 import time
 from typing import List, Dict, Any
-from sqlalchemy import select, distinct
+from sqlalchemy import select, distinct, text
 from app.db.database import AsyncSessionLocal, Report, Connection
 from app.core.security import decrypt_password
+from app.core.engine_pool import get_engine
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,7 @@ async def get_report_connections() -> List[Dict[str, Any]]:
 
 async def warm_up_single_connection(conn_info: Dict[str, Any]) -> bool:
     """
-    Warm up a single database connection by executing a simple query.
+    Warm up a single database connection by pre-initializing the connection pool.
 
     Args:
         conn_info: Connection details dict
@@ -121,40 +122,34 @@ async def warm_up_single_connection(conn_info: Dict[str, Any]) -> bool:
     db_type = conn_info["db_type"]
 
     try:
-        logger.info(f"🔥 Warming up: {conn_name} ({db_type})...")
+        logger.info(f"🔥 Warming up pool: {conn_name} ({db_type})...")
         start_time = time.time()
-
-        # Use QueryEngine to build connection string (same as production)
-        from app.services.query_engine import QueryEngine
 
         config = {
             "host": conn_info["host"],
             "port": conn_info["port"],
             "database": conn_info["database"],
             "username": conn_info["username"],
-            "password": conn_info["password"]
+            "password": conn_info["password"],
+            "ssl_enabled": conn_info.get("ssl_enabled", False)
         }
 
-        conn_str = QueryEngine.build_connection_string(db_type, config)
-
-        # Execute simple SELECT 1 query in thread pool to avoid blocking
-        # This initializes the connection and "warms" it up
-        import connectorx as cx
-
-        def _execute_warmup():
-            query = "SELECT 1 AS warmup"
-            return cx.read_sql(conn_str, query, return_type="arrow")
-
-        # Run in thread pool
-        loop = asyncio.get_event_loop()
-        from concurrent.futures import ThreadPoolExecutor
-        executor = ThreadPoolExecutor(max_workers=1)
-        await loop.run_in_executor(executor, _execute_warmup)
+        # Use connection pool manager - this creates PERSISTENT connections
+        # Just getting the engine and running a query initializes the pool
+        engine = get_engine(db_type, config)
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        
+        success = True
 
         elapsed = time.time() - start_time
-        logger.info(f"✅ {conn_name}: OK ({elapsed:.1f}s)")
 
-        return True
+        if success:
+            logger.info(f"✅ {conn_name}: Pool ready ({elapsed:.1f}s)")
+        else:
+            logger.warning(f"⚠️ {conn_name}: Pool partial ({elapsed:.1f}s)")
+
+        return success
 
     except Exception as e:
         elapsed = time.time() - start_time

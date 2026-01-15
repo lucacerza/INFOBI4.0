@@ -2,7 +2,7 @@
 
 ## Panoramica
 
-Il sistema di warm-up elimina i **195 secondi di attesa** della prima query ConnectorX inizializzando automaticamente le connessioni ai database all'avvio del backend.
+Il sistema di warm-up elimina i **195 secondi di attesa** della prima query SQL Server inizializzando automaticamente le connessioni ai database all'avvio del backend.
 
 ## Come Funziona
 
@@ -182,10 +182,10 @@ A: 2 volte - una per SQL Server, una per PostgreSQL (connessioni uniche)
 A: Sì, ma è MOLTO meglio rallentare l'avvio (che accade 1 volta al giorno) che rallentare la prima query di ogni utente.
 
 **Q: Posso disabilitare il warm-up?**
-A: Sì, commenta le righe 27-29 in `app/main.py`
+A: Sì, commenta le righe in `app/main.py` nel lifespan hook
 
-**Q: Il warm-up funziona anche con connection pooling?**
-A: No, ConnectorX non usa connection pooling. Il warm-up serve proprio per questo - inizializza la connessione una volta, poi rimane warm.
+**Q: Il warm-up funziona con SQLAlchemy connection pooling?**
+A: ✅ SÌ! Il warm-up inizializza il pool SQLAlchemy (5 connessioni permanenti per database). Le connessioni rimangono attive e riutilizzabili.
 
 **Q: Cosa succede se un database è offline durante il warm-up?**
 A: Il warm-up lo segna come FAILED ma continua con gli altri database. Il backend si avvia comunque.

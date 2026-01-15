@@ -29,6 +29,11 @@ async def lifespan(app: FastAPI):
     await warm_up_connections()
 
     yield
+
+    # Cleanup: dispose all connection pools
+    logger.info("🔌 Disposing connection pools...")
+    from app.core.engine_pool import close_all_pools
+    close_all_pools()
     logger.info("👋 Shutting down INFOBI 4.0")
 
 app = FastAPI(

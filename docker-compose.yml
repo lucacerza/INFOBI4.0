@@ -8,7 +8,7 @@ services:
       - "6379:6379"
     volumes:
       - cache_data:/data
-    command: ["--maxmemory", "512mb", "--proactor_threads", "2"]
+    command: ["--maxmemory", "2gb", "--proactor_threads", "4", "--cache_mode"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -20,13 +20,18 @@ services:
     build: ./backend
     ports:
       - "8001:8000"
+    extra_hosts:
+      - "SERVER2023:host-gateway"
     environment:
       - SECRET_KEY=${SECRET_KEY:-super-secret-key-change-in-production}
       - REDIS_URL=redis://cache:6379
       - DATABASE_URL=sqlite+aiosqlite:///./data/infobi.db
+      - MAX_ROWS_PREVIEW=10000
+      - CACHE_TTL=7200
+      - CACHE_TTL_PIVOT=600
     volumes:
       - ./data:/app/data
-      - ./backend:/app
+      - ./backend/app:/app/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       cache:

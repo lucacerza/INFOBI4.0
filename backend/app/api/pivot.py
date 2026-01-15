@@ -17,6 +17,7 @@ from app.db.database import get_db, Report, Connection
 from app.core.deps import get_current_user
 from app.core.security import decrypt_password
 from app.services.query_engine import QueryEngine
+from app.core.engine_pool import get_engine
 from app.services.cache import cache
 
 logger = logging.getLogger(__name__)
@@ -32,9 +33,9 @@ class MetricConfig(BaseModel):
     costField: Optional[str] = None
 
 class EnhancedPivotRequest(BaseModel):
-    group_by: List[str] = []          # Row grouping
-    split_by: List[str] = []           # Multi-level column pivoting (e.g., ["Category", "Anno"])
-    metrics: List[MetricConfig] = []   # Values to aggregate
+    group_by: Optional[List[str]] = []          # Row grouping
+    split_by: Optional[List[str]] = []           # Multi-level column pivoting
+    metrics: Optional[List[MetricConfig]] = []   # Values to aggregate
     filters: dict = {}
     sort: Optional[List[dict]] = None
     calculate_delta: bool = True       # Auto-calculate differences
@@ -104,18 +105,19 @@ async def execute_pivot(
             logger.info(f"Pivot cache HIT for report {report_id} in {elapsed:.1f}ms")
     
     if not cache_hit:
-        # Build connection string
-        conn_string = QueryEngine.build_connection_string(
-            connection.db_type,
-            {
-                "host": connection.host,
-                "port": connection.port,
-                "database": connection.database,
-                "username": connection.username,
-                "password": decrypt_password(connection.password_encrypted)
-            }
-        )
-        
+        # Build config and ensure pool is warm
+        config = {
+            "host": connection.host,
+            "port": connection.port,
+            "database": connection.database,
+            "username": connection.username,
+            "password": decrypt_password(connection.password_encrypted),
+            "ssl_enabled": connection.ssl_enabled
+        }
+
+        # Ensure pool is warm before query (eliminates cold start)
+        QueryEngine.ensure_pool_warm(connection.db_type, config)
+
         # Merge default metrics with request metrics
         metrics = [m.model_dump() for m in request.metrics]
         if not metrics and report.default_metrics:
@@ -127,19 +129,21 @@ async def execute_pivot(
         # Execute query with split_by support
         if split_by and len(split_by) > 0:
             arrow_bytes, row_count = await execute_pivot_with_split(
-                conn_string,
+                connection.db_type,
+                config,
                 report.query,
                 group_by,
                 split_by,
                 metrics,
                 request.filters,
                 request.calculate_delta,
-                connection.db_type
+                request.limit  # Pass limit for preview mode
             )
         else:
             # Standard pivot without split
             arrow_bytes, row_count, query_time = await QueryEngine.execute_pivot(
-                conn_string,
+                connection.db_type,
+                config,
                 report.query,
                 group_by,
                 metrics,
@@ -166,14 +170,15 @@ async def execute_pivot(
 
 
 async def execute_pivot_with_split(
-    conn_string: str,
+    db_type: str,
+    config: dict,
     base_query: str,
     group_by: List[str],
     split_by: List[str],
     metrics: List[dict],
     filters: dict,
     calculate_delta: bool,
-    db_type: str
+    limit: Optional[int] = None
 ) -> tuple[bytes, int]:
     """
     Execute pivot with multi-level column splitting using Polars.
@@ -190,9 +195,9 @@ async def execute_pivot_with_split(
     - Creates columns: Electronics|2023, Electronics|2024, Furniture|2023, etc.
     """
     import polars as pl
-    import connectorx as cx
     import pyarrow.ipc as ipc
     from io import BytesIO
+    import asyncio
 
     # DEBUG: Log split pivot parameters
     logger.info(f"🔍 execute_pivot_with_split called:")
@@ -203,7 +208,7 @@ async def execute_pivot_with_split(
         for i, m in enumerate(metrics[:3]):
             logger.info(f"   - metric[{i}]: field={m.get('field')}, agg={m.get('aggregation')}, name={m.get('name')}")
 
-    is_mssql = "mssql" in conn_string or db_type == "mssql"
+    is_mssql = db_type == "mssql"
 
     # GROUP BY mode: Build aggregated SELECT
     select_parts = []
@@ -225,7 +230,10 @@ async def execute_pivot_with_split(
 
         if field and agg in ['SUM', 'AVG', 'COUNT', 'MIN', 'MAX']:
             metric_names.append(name)
-            if is_mssql:
+            # FIX: Handle COUNT(*) correctly without quoting *
+            if field == '*':
+                select_parts.append(f'{agg}(*) AS [{name}]' if is_mssql else f'{agg}(*) AS "{name}"')
+            elif is_mssql:
                 select_parts.append(f'{agg}([{field}]) AS [{name}]')
             else:
                 select_parts.append(f'{agg}("{field}") AS "{name}"')
@@ -252,19 +260,39 @@ async def execute_pivot_with_split(
         if conditions:
             where_sql = "WHERE " + " AND ".join(conditions)
 
+    # Apply Limit if provided (for Preview mode)
+    limit_sql = ""
+    if limit:
+        if is_mssql:
+            limit_sql = f"TOP {limit}"
+        else:
+            limit_sql = f"LIMIT {limit}"
+
     # Final SQL
-    sql = f"""
-        SELECT {', '.join(select_parts)}
-        FROM ({base_query}) AS base_data
-        {where_sql}
-        GROUP BY {group_clause}
-    """
+    if limit and is_mssql:
+        sql = f"SELECT {limit_sql} {', '.join(select_parts)} FROM ({base_query}) AS base_data {where_sql} GROUP BY {group_clause}"
+    elif limit:
+        sql = f"SELECT {', '.join(select_parts)} FROM ({base_query}) AS base_data {where_sql} GROUP BY {group_clause} {limit_sql}"
+    else:
+        sql = f"""
+            SELECT {', '.join(select_parts)}
+            FROM ({base_query}) AS base_data
+            {where_sql}
+            GROUP BY {group_clause}
+        """
     
     logger.info(f"Split pivot SQL: {sql[:300]}...")
     
     # Execute query
-    arrow_table = cx.read_sql(conn_string, sql, return_type="arrow")
-    df = pl.from_arrow(arrow_table)
+    # Use QueryEngine executor to avoid blocking the event loop
+    loop = asyncio.get_event_loop()
+    df = await loop.run_in_executor(
+        None,
+        QueryEngine._execute_df_sync,
+        db_type, config, sql
+    )
+    
+    arrow_table = df.to_arrow()
 
     if df.is_empty():
         # Return empty result
@@ -397,19 +425,18 @@ async def get_pivot_schema(
     report, connection = row
     
     try:
-        conn_string = QueryEngine.build_connection_string(
-            connection.db_type,
-            {
-                "host": connection.host,
-                "port": connection.port,
-                "database": connection.database,
-                "username": connection.username,
-                "password": decrypt_password(connection.password_encrypted)
-            }
-        )
-        
-        import connectorx as cx
-        
+        config = {
+            "host": connection.host,
+            "port": connection.port,
+            "database": connection.database,
+            "username": connection.username,
+            "password": decrypt_password(connection.password_encrypted),
+            "ssl_enabled": connection.ssl_enabled
+        }
+
+        # Ensure pool is warm before query (eliminates cold start)
+        QueryEngine.ensure_pool_warm(connection.db_type, config)
+
         # Get just 1 row to infer schema
         if connection.db_type == "mssql":
             limit_query = f"SELECT TOP 1 * FROM ({report.query}) AS schema_query"
@@ -417,7 +444,8 @@ async def get_pivot_schema(
             limit_query = f"SELECT * FROM ({report.query}) AS schema_query LIMIT 1"
         
         logger.info(f"Executing schema query for report {report_id}")
-        arrow_table = cx.read_sql(conn_string, limit_query, return_type="arrow")
+        
+        arrow_table = QueryEngine._execute_query_sync(connection.db_type, config, limit_query)
         
         columns = []
         for field in arrow_table.schema:
@@ -566,26 +594,28 @@ async def execute_lazy_pivot(
     # Validate depth
     if depth >= len(request.group_by):
         raise HTTPException(status_code=400, detail=f"Invalid depth {depth}")
-    
-    # Build connection string
-    conn_string = QueryEngine.build_connection_string(
-        connection.db_type,
-        {
-            "host": connection.host,
-            "port": connection.port,
-            "database": connection.database,
-            "username": connection.username,
-            "password": decrypt_password(connection.password_encrypted)
-        }
-    )
-    
+
+    # Build config and ensure pool is warm
+    config = {
+        "host": connection.host,
+        "port": connection.port,
+        "database": connection.database,
+        "username": connection.username,
+        "password": decrypt_password(connection.password_encrypted),
+        "ssl_enabled": connection.ssl_enabled
+    }
+
+    # Ensure pool is warm before query (eliminates cold start)
+    QueryEngine.ensure_pool_warm(connection.db_type, config)
+
     # Group by ONLY current level
     current_dimension = request.group_by[depth]
     combined_filters = {**request.filters, **parent_filters}
     
     # Execute query for this level only
     arrow_bytes, row_count, query_time = await QueryEngine.execute_pivot(
-        conn_string,
+        connection.db_type,
+        config,
         report.query,
         [current_dimension],
         [m.model_dump() for m in request.metrics],
@@ -634,22 +664,24 @@ async def get_grand_total(
         raise HTTPException(status_code=404, detail="Report not found")
     
     report, connection = row
-    
-    # Build connection string
-    conn_string = QueryEngine.build_connection_string(
-        connection.db_type,
-        {
-            "host": connection.host,
-            "port": connection.port,
-            "database": connection.database,
-            "username": connection.username,
-            "password": decrypt_password(connection.password_encrypted)
-        }
-    )
-    
+
+    # Build config and ensure pool is warm
+    config = {
+        "host": connection.host,
+        "port": connection.port,
+        "database": connection.database,
+        "username": connection.username,
+        "password": decrypt_password(connection.password_encrypted),
+        "ssl_enabled": connection.ssl_enabled
+    }
+
+    # Ensure pool is warm before query (eliminates cold start)
+    QueryEngine.ensure_pool_warm(connection.db_type, config)
+
     # Execute with NO grouping
     arrow_bytes, row_count, query_time = await QueryEngine.execute_pivot(
-        conn_string,
+        connection.db_type,
+        config,
         report.query,
         [],  # No group by = grand total
         [m.model_dump() for m in request.metrics],

@@ -280,6 +280,29 @@ export default function ReportEditorPage() {
     }
   };
 
+  const handleGoToFullReport = async () => {
+    if (!id) return;
+
+    // Auto-save config before navigating
+    try {
+      await fetch(`/api/pivot/${id}/config`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getToken()}`
+        },
+        body: JSON.stringify(pivotConfig)
+      });
+      
+      // Navigate after successful save
+      navigate(`/reports/${id}/pivot`);
+    } catch (err) {
+      console.error('Error auto-saving config:', err);
+      // Navigate anyway - user can reconfigure
+      navigate(`/reports/${id}/pivot`);
+    }
+  };
+
   const handleConfigChange = (newConfig: PivotConfig) => {
     setPivotConfig(newConfig);
   };
@@ -322,7 +345,7 @@ export default function ReportEditorPage() {
               Salva Config
             </button>
             <button
-              onClick={() => navigate(`/reports/${id}/pivot`)}
+              onClick={handleGoToFullReport}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-green-600 hover:bg-green-700 text-white transition"
             >
               <Eye className="w-4 h-4" />
@@ -347,6 +370,7 @@ export default function ReportEditorPage() {
                 rowGroups={pivotConfig.rows || []}
                 valueCols={pivotConfig.values || []}
                 pivotCols={pivotConfig.columns || []}
+                previewMode={true}
               />
             </div>
           </div>

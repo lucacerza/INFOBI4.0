@@ -10,13 +10,13 @@
 ## 📊 Architettura
 
 ```
-Frontend (React + Perspective.js)
+Frontend (React + BiGrid Custom)
        │
        │  Arrow IPC (binary, streaming)
        ▼
-Backend (Python + FastAPI)
+Backend (Python + FastAPI + Polars)
        │
-       │  ConnectorX (10x faster)
+       │  SQLAlchemy Connection Pooling (pre-warmed)
        ▼
 Database (SQL Server, PostgreSQL, MySQL)
 ```
@@ -56,7 +56,7 @@ infobi/
 │       ├── api/       # Endpoints
 │       ├── services/  # Query engine, cache
 │       └── db/        # Database models
-├── frontend/          # React + Perspective.js
+├── frontend/          # React + BiGrid (custom pivot)
 │   └── src/
 │       ├── components/
 │       ├── pages/
@@ -69,16 +69,22 @@ infobi/
 ### Pivot Server-Side
 Quando l'utente cambia configurazione pivot:
 1. Frontend invia config a `/api/pivot/{id}`
-2. Backend esegue query con `GROUP BY ROLLUP`
+2. Backend esegue query con `GROUP BY` e aggregazioni Polars
 3. Margini calcolati CORRETTAMENTE su ogni livello
 4. Risultato in Arrow IPC (velocissimo)
-5. Perspective.js visualizza (zero calcoli)
+5. BiGrid visualizza con virtualizzazione (lazy loading gerarchico)
 
 ### Cache
 - **Dragonfly** (compatibile Redis, 25x più veloce)
-- Cache per query e pivot
-- TTL configurabile per report
+- Cache per query e pivot (2GB, 4 thread)
+- TTL: 2h query, 10min pivot
 - Invalidazione automatica su modifica
+
+### Connection Pooling
+- **SQLAlchemy** con pre-warming all'avvio backend
+- 5 connessioni permanenti per database
+- Elimina cold start (da 195s a 2s)
+- Pool condiviso tra tutti gli utenti
 
 ## 📈 Performance Target
 
