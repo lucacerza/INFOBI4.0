@@ -32,6 +32,9 @@ interface BiGridProps {
   defaultGroupBy?: string[];
   defaultSplitBy?: string[];  // Changed to array for multi-level!
   defaultMetrics?: MetricDefinition[];
+  /* STARTED NEW FEATURE: OrderBy/FilterBy */
+  defaultSort?: { field: string; direction: 'asc' | 'desc' }[];
+  /* END NEW FEATURE */
   onConfigChange?: (config: any) => void;
   previewMode?: boolean;  // If true, limits aggregation to 100 rows for fast config
 }
@@ -41,6 +44,9 @@ interface PivotConfig {
   split_by: string[];  // Multi-level column dimensions
   metrics: MetricDefinition[];
   filters: Record<string, any>;
+  /* STARTED NEW FEATURE: OrderBy/FilterBy */
+  sort?: { colId: string; sort: 'asc' | 'desc' }[];
+  /* END NEW FEATURE */
 }
 
 interface ColumnDef {
@@ -448,11 +454,18 @@ export default function BiGrid({
         ? [{ name: 'count', field: '*', type: 'count', aggregation: 'COUNT' }]
         : [];
 
-    const newConfig = {
+    /* STARTED NEW FEATURE: OrderBy/FilterBy - Map props to internal structure */
+    const initialSort = defaultSort ? defaultSort.map(s => ({ colId: s.field, sort: s.direction })) : [];
+    /* END NEW FEATURE */
+
+    const newConfig: PivotConfig = {
       group_by: defaultGroupBy,
       split_by: defaultSplitBy,
       metrics: effectiveMetrics,
-      filters: {}
+      filters: {},
+      /* STARTED NEW FEATURE: OrderBy/FilterBy */
+      sort: initialSort
+      /* END NEW FEATURE */
     };
     setCurrentConfig(newConfig);
 
@@ -562,7 +575,10 @@ export default function BiGrid({
         group_by: Array.isArray(config.group_by) ? config.group_by : [],
         split_by: Array.isArray(config.split_by) ? config.split_by : [],
         metrics: Array.isArray(config.metrics) ? config.metrics.filter(m => m && m.name) : [],
-        filters: config.filters || {}
+        filters: config.filters || {},
+        /* STARTED NEW FEATURE: OrderBy/FilterBy */
+        sort: config.sort || []
+        /* END NEW FEATURE */
       };
 
       // PREVIEW MODE: Add limit=100 for fast configuration

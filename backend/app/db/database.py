@@ -191,13 +191,14 @@ async def init_db():
             session.add(admin)
             await session.commit()
             logger.info("✅ Created default admin user (admin/admin)")
-        else:
-            # Ensure admin password is always 'admin' in this dev environment
-            # This fixes issues where DB persists but password was changed or hashed differently
-            admin.password_hash = get_password_hash("admin")
-            session.add(admin)
-            await session.commit()
-            logger.info("✅ Reset admin password to 'admin'")
+        
+        # REMOVED FORCED RESET: User credentials should persist across restarts
+        # else:
+        #    # Ensure admin password is always 'admin' in this dev environment
+        #    admin.password_hash = get_password_hash("admin")
+        #    session.add(admin)
+        #    await session.commit()
+        #    logger.info("✅ Reset admin password to 'admin'")
 
 async def get_db():
     """Dependency for database session"""
