@@ -163,6 +163,7 @@ class PivotDrillRequest(BaseModel):
     valueCols: List[ValueCol]
     pivotCols: List[str] = []
     filterModel: Dict[str, FilterDef] = {}
+    sortModel: List[SortModel] = []  # Optional sorting
     startRow: Optional[int] = 0
     endRow: Optional[int] = 100
 

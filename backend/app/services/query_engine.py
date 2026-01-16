@@ -235,6 +235,17 @@ class QueryEngine:
                         conditions.append(f"{col} > {filter_def['value']}")
                     elif filter_def.get('type') == 'lessThan':
                         conditions.append(f"{col} < {filter_def['value']}")
+                    elif filter_def.get('type') == 'greaterThanOrEqual':
+                        conditions.append(f"{col} >= {filter_def['value']}")
+                    elif filter_def.get('type') == 'lessThanOrEqual':
+                        conditions.append(f"{col} <= {filter_def['value']}")
+                    elif filter_def.get('type') == 'notEqual':
+                        conditions.append(f"{col} != '{filter_def['value']}'")
+                    elif filter_def.get('type') == 'isNotNull':
+                        conditions.append(f"{col} IS NOT NULL")
+                    elif filter_def.get('type') == 'isNull':
+                        conditions.append(f"{col} IS NULL")
+
                 if conditions:
                     where_sql = "WHERE " + " AND ".join(conditions)
             
@@ -330,6 +341,21 @@ class QueryEngine:
                         where_clauses.append(f"{clean_col} = {val}")
                 elif filter_def.type == 'startsWith':
                     where_clauses.append(f"{clean_col} LIKE '{val}%'")
+                elif filter_def.type == 'notEqual':
+                    if isinstance(val, str): where_clauses.append(f"{clean_col} != '{val}'")
+                    else: where_clauses.append(f"{clean_col} != {val}")
+                elif filter_def.type == 'greaterThan':
+                    where_clauses.append(f"{clean_col} > {val}")
+                elif filter_def.type == 'greaterThanOrEqual':
+                    where_clauses.append(f"{clean_col} >= {val}")
+                elif filter_def.type == 'lessThan':
+                    where_clauses.append(f"{clean_col} < {val}")
+                elif filter_def.type == 'lessThanOrEqual':
+                    where_clauses.append(f"{clean_col} <= {val}")
+                elif filter_def.type == 'isNotNull':
+                    where_clauses.append(f"{clean_col} IS NOT NULL")
+                elif filter_def.type == 'isNull':
+                    where_clauses.append(f"{clean_col} IS NULL")
             
             where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
             
@@ -439,28 +465,49 @@ class QueryEngine:
                     elif filter_def.type == 'equals':
                         if isinstance(val, str): where_clauses.append(f"{clean_col} = '{val}'")
                         else: where_clauses.append(f"{clean_col} = {val}")
+                    elif filter_def.type == 'notEqual':
+                        if isinstance(val, str): where_clauses.append(f"{clean_col} != '{val}'")
+                        else: where_clauses.append(f"{clean_col} != {val}")
+                    elif filter_def.type == 'greaterThan':
+                        where_clauses.append(f"{clean_col} > {val}")
+                    elif filter_def.type == 'greaterThanOrEqual':
+                        where_clauses.append(f"{clean_col} >= {val}")
+                    elif filter_def.type == 'lessThan':
+                        where_clauses.append(f"{clean_col} < {val}")
+                    elif filter_def.type == 'lessThanOrEqual':
+                        where_clauses.append(f"{clean_col} <= {val}")
+                    elif filter_def.type == 'isNotNull':
+                        where_clauses.append(f"{clean_col} IS NOT NULL")
+                    elif filter_def.type == 'isNull':
+                        where_clauses.append(f"{clean_col} IS NULL")
                  
                  if where_clauses:
                      base_select += " WHERE " + " AND ".join(where_clauses)
                  
+                 # Apply Sorting
+                 order_sql = ""
+                 if request.sortModel:
+                    order_clauses = []
+                    for sort in request.sortModel:
+                        clean_col = "".join(c for c in sort.colId if c.isalnum() or c in '_')
+                        direction = "DESC" if sort.sort == "desc" else "ASC"
+                        order_clauses.append(f"{clean_col} {direction}")
+                    order_sql = " ORDER BY " + ", ".join(order_clauses)
+
                  # Apply Pagination
                  start_row = request.startRow or 0
                  end_row = request.endRow or 100
                  limit = end_row - start_row
                  
                  if is_mssql:
-                     # MSSQL typically requires ORDER BY for OFFSET/FETCH
-                     # If no sort, order by first column or constant
-                     # Simplification: Use TOP if startRow is 0, else need advanced logic
-                     if start_row == 0:
+                     if start_row == 0 and not order_sql:
                          full_query = base_select.replace("SELECT", f"SELECT TOP {limit}", 1)
                      else:
-                         # Fallback for MSSQL pagination without known primary key is tricky
-                         # Using simple offset/fetch assuming SQL Server 2012+
-                         full_query = f"{base_select} ORDER BY (SELECT NULL) OFFSET {start_row} ROWS FETCH NEXT {limit} ROWS ONLY"
+                         if not order_sql: order_sql = " ORDER BY (SELECT NULL)"
+                         full_query = f"{base_select}{order_sql} OFFSET {start_row} ROWS FETCH NEXT {limit} ROWS ONLY"
                  else:
                      # Standard SQL (SQLite, Postgres, MySQL)
-                     full_query = f"{base_select} LIMIT {limit} OFFSET {start_row}"
+                     full_query = f"{base_select}{order_sql} LIMIT {limit} OFFSET {start_row}"
 
                  engine = get_engine(db_type, config)
                  with engine.connect() as conn:
@@ -501,6 +548,21 @@ class QueryEngine:
                 elif filter_def.type == 'equals':
                      if isinstance(val, str): where_clauses.append(f"{clean_col} = '{val}'")
                      else: where_clauses.append(f"{clean_col} = {val}")
+                elif filter_def.type == 'notEqual':
+                    if isinstance(val, str): where_clauses.append(f"{clean_col} != '{val}'")
+                    else: where_clauses.append(f"{clean_col} != {val}")
+                elif filter_def.type == 'greaterThan':
+                    where_clauses.append(f"{clean_col} > {val}")
+                elif filter_def.type == 'greaterThanOrEqual':
+                    where_clauses.append(f"{clean_col} >= {val}")
+                elif filter_def.type == 'lessThan':
+                    where_clauses.append(f"{clean_col} < {val}")
+                elif filter_def.type == 'lessThanOrEqual':
+                    where_clauses.append(f"{clean_col} <= {val}")
+                elif filter_def.type == 'isNotNull':
+                    where_clauses.append(f"{clean_col} IS NOT NULL")
+                elif filter_def.type == 'isNull':
+                    where_clauses.append(f"{clean_col} IS NULL")
             
             where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
             
@@ -533,6 +595,18 @@ class QueryEngine:
             limit_val = (request.endRow or 1000) - (request.startRow or 0)
             offset_val = request.startRow or 0
             
+            # Build ORDER BY
+            order_sql = ""
+            if request.sortModel:
+                order_clauses = []
+                for sort in request.sortModel:
+                    clean_col = "".join(c for c in sort.colId if c.isalnum() or c in '_')
+                    direction = "DESC" if sort.sort == "desc" else "ASC"
+                    order_clauses.append(f"{clean_col} {direction}")
+                order_sql = "ORDER BY " + ", ".join(order_clauses)
+            else:
+                order_sql = f"ORDER BY {group_col} ASC"
+
             is_mssql_drill = db_type == "mssql"
 
             if is_mssql_drill:
@@ -543,7 +617,7 @@ class QueryEngine:
                     FROM ({base_query}) AS base
                     {where_sql}
                     GROUP BY {group_by_sql}
-                    ORDER BY {group_col}
+                    {order_sql}
                     OFFSET {offset_val} ROWS FETCH NEXT {limit_val} ROWS ONLY
                 """
             else:
@@ -553,7 +627,7 @@ class QueryEngine:
                     FROM ({base_query}) AS base
                     {where_sql}
                     GROUP BY {group_by_sql}
-                    ORDER BY {group_col} ASC
+                    {order_sql}
                     LIMIT {limit_val} OFFSET {offset_val}
                 """
             
