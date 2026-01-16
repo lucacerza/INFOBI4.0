@@ -499,15 +499,15 @@ class QueryEngine:
                  end_row = request.endRow or 100
                  limit = end_row - start_row
                  
+                 full_query = ""
                  if is_mssql:
-                     if start_row == 0 and not order_sql:
-                         full_query = base_select.replace("SELECT", f"SELECT TOP {limit}", 1)
-                     else:
-                         if not order_sql: order_sql = " ORDER BY (SELECT NULL)"
-                         full_query = f"{base_select}{order_sql} OFFSET {start_row} ROWS FETCH NEXT {limit} ROWS ONLY"
+                     if not order_sql:
+                         order_sql = "ORDER BY (SELECT NULL)"
+                     # SQL Server OFFSET FETCH
+                     full_query = f"{base_select} {order_sql} OFFSET {start_row} ROWS FETCH NEXT {limit} ROWS ONLY"
                  else:
-                     # Standard SQL (SQLite, Postgres, MySQL)
-                     full_query = f"{base_select}{order_sql} LIMIT {limit} OFFSET {start_row}"
+                     # Standard Limit/Offset
+                     full_query = f"{base_select} {order_sql} LIMIT {limit} OFFSET {start_row}"
 
                  engine = get_engine(db_type, config)
                  with engine.connect() as conn:
@@ -596,41 +596,73 @@ class QueryEngine:
             offset_val = request.startRow or 0
             
             # Build ORDER BY
+            # Note: The group column is aliased as 'key_val' in the inner query,
+            # so we need to map it correctly in the ORDER BY clause.
+            # Also, we can only sort by columns that exist in the output:
+            # - group_col (aliased as key_val)
+            # - pivot columns
+            # - aggregated value columns
+            # IMPORTANT: Only include rowGroupCols UP TO current level (not deeper levels!)
+            # e.g., if rowGroupCols=['agente','fornitore'] and current_level=0,
+            # only 'agente' (the current group_col) is in the output, NOT 'fornitore'
+            available_sort_cols = {group_col, 'key_val'}
+            # Only add group cols that are ABOVE current level (already filtered in WHERE)
+            # The current group_col is already added above
+            available_sort_cols.update(request.pivotCols)
+            available_sort_cols.update(v.colId for v in request.valueCols)
+
             order_sql = ""
             if request.sortModel:
                 order_clauses = []
                 for sort in request.sortModel:
+                    # Security: sanitize column id
                     clean_col = "".join(c for c in sort.colId if c.isalnum() or c in '_')
                     direction = "DESC" if sort.sort == "desc" else "ASC"
+
+                    # Skip columns that don't exist in the grouped output
+                    if clean_col not in available_sort_cols:
+                        logger.debug(f"Skipping sort column '{clean_col}' - not in grouped output")
+                        continue
+
+                    # Map group column to its alias 'key_val'
+                    if clean_col == group_col:
+                        clean_col = "key_val"
                     order_clauses.append(f"{clean_col} {direction}")
-                order_sql = "ORDER BY " + ", ".join(order_clauses)
+
+                if order_clauses:
+                    order_sql = "ORDER BY " + ", ".join(order_clauses)
+                else:
+                    # Fallback if all sort columns were invalid
+                    order_sql = "ORDER BY key_val ASC"
             else:
-                order_sql = f"ORDER BY {group_col} ASC"
+                # Default Sort by key
+                order_sql = "ORDER BY key_val ASC"
 
             is_mssql_drill = db_type == "mssql"
-
+            
+            # WRAP QUERY to ensure aliases are valid in ORDER BY and Pagination
+            inner_query = f"""
+                SELECT {select_sql}
+                FROM ({base_query}) AS base
+                {where_sql}
+                GROUP BY {group_by_sql}
+            """
+            
             if is_mssql_drill:
-                # MSSQL Pagination requires ORDER BY
-                # Verify if group_col is valid for ordering
-                full_query = f"""
-                    SELECT {select_sql}
-                    FROM ({base_query}) AS base
-                    {where_sql}
-                    GROUP BY {group_by_sql}
+                 # MSSQL requires Order By for offset
+                 # We reference the columns from the inner query (aliases)
+                 full_query = f"""
+                    SELECT * FROM ({inner_query}) AS drill_tbl
                     {order_sql}
                     OFFSET {offset_val} ROWS FETCH NEXT {limit_val} ROWS ONLY
-                """
+                 """
             else:
-                # Standard SQL Pagination
-                full_query = f"""
-                    SELECT {select_sql}
-                    FROM ({base_query}) AS base
-                    {where_sql}
-                    GROUP BY {group_by_sql}
+                 full_query = f"""
+                    SELECT * FROM ({inner_query}) AS drill_tbl
                     {order_sql}
                     LIMIT {limit_val} OFFSET {offset_val}
-                """
-            
+                 """
+
             # Execute
             engine = get_engine(db_type, config)
             with engine.connect() as conn:

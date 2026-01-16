@@ -486,6 +486,8 @@ class PivotConfigSave(BaseModel):
     rows: List[str] = []
     columns: List[str] = []
     values: List[dict] = []  # [{id, name, field, aggregation}]
+    orderBy: List[dict] = []  # [{field, direction: 'asc'|'desc'}]
+    filters: List[dict] = []  # [{field, type, value}]
 
 @router.post("/{report_id}/config")
 async def save_pivot_config(
@@ -509,7 +511,9 @@ async def save_pivot_config(
         report.perspective_config = {
             "rows": config.rows,
             "columns": config.columns,
-            "values": config.values
+            "values": config.values,
+            "orderBy": config.orderBy,
+            "filters": config.filters
         }
 
         await db.commit()
@@ -540,10 +544,13 @@ async def load_pivot_config(
             raise HTTPException(status_code=404, detail="Report not found")
 
         # Return saved config or empty default
-        config = report.perspective_config or {
-            "rows": [],
-            "columns": [],
-            "values": []
+        saved_config = report.perspective_config or {}
+        config = {
+            "rows": saved_config.get("rows", []),
+            "columns": saved_config.get("columns", []),
+            "values": saved_config.get("values", []),
+            "orderBy": saved_config.get("orderBy", []),
+            "filters": saved_config.get("filters", [])
         }
 
         logger.info(f"Loaded pivot config for report {report_id}")

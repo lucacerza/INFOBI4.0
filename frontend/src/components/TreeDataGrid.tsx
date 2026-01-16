@@ -20,9 +20,13 @@ interface TreeDataGridProps {
   valueCols: any[];
   pivotCols?: string[];
   previewMode?: boolean;  // Limit to 100 rows for preview
+  /* STARTED NEW FEATURE: OrderBy/FilterBy */
+  orderBy?: { field: string; direction: 'asc' | 'desc' }[];
+  filters?: { field: string; type: string; value: any }[];
+  /* END NEW FEATURE */
 }
 
-export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols = [], previewMode = false }: TreeDataGridProps) {
+export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols = [], previewMode = false, orderBy = [], filters = [] }: TreeDataGridProps) {
   // --- STATE ---
   const [data, setData] = useState<any[]>([]); 
   const [expanded, setExpanded] = useState<ExpandedState>({});
@@ -133,12 +137,21 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
     
     const tStart = performance.now();
     try {
+        /* STARTED NEW FEATURE: OrderBy/FilterBy - Map props to API request */
+        const sortModel = orderBy.map(o => ({ colId: o.field, sort: o.direction }));
+        const filterModel: any = {};
+        filters.forEach(f => {
+            filterModel[f.field] = { filter: f.value, type: f.type };
+        });
+        /* END NEW FEATURE */
+
         const response = await reportsApi.executePivotDrill(reportId, {
             rowGroupCols: rowGroups,
             groupKeys: nodePath,
             valueCols: valueCols.map(v => ({ colId: v.field, aggFunc: v.aggregation })),
             pivotCols: pivotCols,
-            filterModel: {},
+            filterModel: filterModel,
+            sortModel: sortModel,
             startRow, 
             endRow
         });
@@ -578,19 +591,32 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
 
   // --- INITIAL LOAD ---
   useEffect(() => {
+    // Skip initial load if valueCols is empty (waiting for config to load)
+    if (valueCols.length === 0) {
+        setIsLoading(false);
+        setData([]);
+        return;
+    }
+
+    let cancelled = false; // Flag to prevent stale updates
+
     const init = async () => {
         setIsLoading(true);
-        setData([]); 
-        setPivotHeaders([]); 
-        setColumnSizing({});     
-        
+        setData([]);
+        setPivotHeaders([]);
+        setColumnSizing({});
+        setExpanded({}); // Reset expansion state when config changes
+
         let initialData = await fetchNodeData([], 0, PAGE_SIZE);
-        
+
+        // Check if this effect was superseded by a newer one
+        if (cancelled) return;
+
         if (rowGroups.length > 0) {
             initialData = initialData.map((r: any) => ({
                 ...r,
                 _path: [r.key_val],
-                subRows: rowGroups.length > 1 ? [] : undefined 
+                subRows: rowGroups.length > 1 ? [] : undefined
             }));
         }
 
@@ -609,7 +635,11 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
         autoResizeColumns();
     };
     init();
-  }, [reportId, rowGroups, valueCols, pivotCols]); 
+
+    // Cleanup: mark this effect as cancelled if dependencies change
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportId, JSON.stringify(rowGroups), JSON.stringify(valueCols), JSON.stringify(pivotCols), JSON.stringify(orderBy), JSON.stringify(filters)]); 
 
   // Auto-resize when data changes or columns update
   useEffect(() => {

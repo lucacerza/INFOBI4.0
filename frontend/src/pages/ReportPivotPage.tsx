@@ -27,6 +27,10 @@ interface PivotConfig {
   rows: string[];        // groupBy
   columns: string[];     // splitBy
   values: MetricConfig[]; // metrics
+  /* STARTED NEW FEATURE: OrderBy/FilterBy */
+  orderBy?: { field: string; direction: 'asc' | 'desc' }[];
+  filters?: { field: string; type: string; value: any }[];
+  /* END NEW FEATURE */
 }
 
 interface MetricConfig {
@@ -48,7 +52,9 @@ export default function ReportPivotPage() {
   const [pivotConfig, setPivotConfig] = useState<PivotConfig>({
     rows: [],
     columns: [],
-    values: []
+    values: [],
+    orderBy: [],
+    filters: []
   });
 
   const getToken = () => localStorage.getItem('token');
@@ -115,7 +121,9 @@ export default function ReportPivotPage() {
         initialConfig = {
           rows: [],      // No grouping initially
           columns: [],   // No split initially
-          values: allFieldsAsMetrics  // ALL fields visible in flat table
+          values: allFieldsAsMetrics,  // ALL fields visible in flat table
+          orderBy: [],   // No sorting initially
+          filters: []    // No filters initially
         };
       }
       setPivotConfig(initialConfig);
@@ -202,6 +210,8 @@ export default function ReportPivotPage() {
             <TreeDataGrid
               reportId={reportId}
               rowGroups={pivotConfig.rows}
+              orderBy={pivotConfig.orderBy}
+              filters={pivotConfig.filters}
               valueCols={pivotConfig.values}
               pivotCols={pivotConfig.columns}
               previewMode={false}

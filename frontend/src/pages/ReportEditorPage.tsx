@@ -31,6 +31,10 @@ interface PivotConfig {
   rows: string[];        // groupBy
   columns: string[];     // splitBy
   values: MetricConfig[]; // metrics
+  /* STARTED NEW FEATURE: OrderBy/FilterBy */
+  orderBy?: { field: string; direction: 'asc' | 'desc' }[];
+  filters?: { field: string; type: string; value: any }[];
+  /* END NEW FEATURE */
 }
 
 export default function ReportEditorPage() {
@@ -64,7 +68,9 @@ export default function ReportEditorPage() {
   const [pivotConfig, setPivotConfig] = useState<PivotConfig>({
     rows: [],
     columns: [],
-    values: []
+    values: [],
+    orderBy: [],
+    filters: []
   });
 
   const getToken = () => localStorage.getItem('token');
@@ -247,7 +253,11 @@ export default function ReportEditorPage() {
       setPivotConfig({
         rows: [],       // No grouping initially
         columns: [],    // No split initially
-        values: allFieldsAsMetrics  // ALL fields visible in flat table
+        values: allFieldsAsMetrics,  // ALL fields visible in flat table
+        /* STARTED NEW FEATURE: OrderBy/FilterBy */
+        orderBy: [],
+        filters: []
+        /* END NEW FEATURE */
       });
 
       setShowPivotConfig(true);
@@ -371,6 +381,8 @@ export default function ReportEditorPage() {
                 valueCols={pivotConfig.values || []}
                 pivotCols={pivotConfig.columns || []}
                 previewMode={true}
+                orderBy={pivotConfig.orderBy || []}
+                filters={pivotConfig.filters || []}
               />
             </div>
           </div>

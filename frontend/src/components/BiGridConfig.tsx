@@ -29,11 +29,26 @@ export interface BiGridMetric {
   label?: string;
 }
 
+/* STARTED NEW FEATURE: OrderBy/FilterBy - Interfaces update */
+export interface BiGridSort {
+  field: string;
+  direction: 'asc' | 'desc';
+}
+
+export interface BiGridFilter {
+  field: string;
+  type: string;
+  value: any;
+}
+
 export interface BiGridConfigData {
   rows?: string[];
   columns?: string[];
   values?: BiGridMetric[];
+  orderBy?: BiGridSort[];
+  filters?: BiGridFilter[];
 }
+/* END NEW FEATURE */
 
 interface BiGridConfigProps {
   config: BiGridConfigData;
@@ -43,7 +58,28 @@ interface BiGridConfigProps {
 
 // --- DRAG & DROP COMPONENTS ---
 
-function SortableItem({ id, children, onRemove, onAggregationChange, aggregation, isAvailableList }: any) {
+// Helper to strip prefixes for display/logic
+const getFieldFromId = (id: string | null) => {
+    if (!id) return '';
+    if (id.startsWith('sort:')) return id.replace('sort:', '');
+    if (id.startsWith('filter:')) return id.replace('filter:', '');
+    return id;
+};
+
+function SortableItem({ 
+    id, 
+    children, 
+    onRemove, 
+    onAggregationChange, 
+    aggregation, 
+    isAvailableList,
+    /* STARTED NEW FEATURE: OrderBy/FilterBy - New props */
+    onSortChange,
+    sortDirection,
+    onFilterChange,
+    filterValue
+    /* END NEW FEATURE */
+}: any) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
     
     // Use rigid transform to prevent blurring/distortion
@@ -53,6 +89,8 @@ function SortableItem({ id, children, onRemove, onAggregationChange, aggregation
         opacity: isDragging ? 0.5 : 1,
         zIndex: isDragging ? 999 : 'auto',
     };
+
+    const displayLabel = getFieldFromId(children as string);
 
     return (
         <div ref={setNodeRef} style={style} 
@@ -64,7 +102,7 @@ function SortableItem({ id, children, onRemove, onAggregationChange, aggregation
         >
             <div className="flex items-center gap-2 truncate flex-1" {...attributes} {...listeners}>
                 <GripVertical size={12} className="text-gray-500 flex-shrink-0" />
-                <span className="truncate font-sans">{children}</span>
+                <span className="truncate font-sans">{displayLabel}</span>
             </div>
             
             <div className="flex items-center gap-1">
@@ -83,6 +121,48 @@ function SortableItem({ id, children, onRemove, onAggregationChange, aggregation
                         <option value="max">max</option>
                     </select>
                 )}
+
+                {/* STARTED NEW FEATURE: OrderBy/FilterBy - UI Controls */}
+                {onSortChange && (
+                   <button
+                        onClick={(e) => { e.stopPropagation(); onSortChange(sortDirection === 'asc' ? 'desc' : 'asc'); }}
+                        className="text-[10px] px-1.5 py-0.5 border border-[#555] rounded bg-[#2b2b2b] text-gray-300 hover:text-white"
+                   >
+                       {sortDirection === 'asc' ? 'ASC' : 'DESC'}
+                   </button>
+                )}
+                {/* END NEW FEATURE */ }
+
+                {onFilterChange && filterValue && (
+                    <div className="flex items-center gap-1">
+                        <select 
+                            value={filterValue.type || 'contains'} 
+                            onChange={(e) => { e.stopPropagation(); onFilterChange('type', e.target.value); }}
+                            className="bg-[#2b2b2b] text-xs text-white border border-gray-600 rounded px-1 w-20"
+                            onClick={(e) => e.stopPropagation()} 
+                            onPointerDown={(e) => e.stopPropagation()} 
+                         >
+                            <option value="contains">Contiene</option>
+                            <option value="equals">Uguale</option>
+                            <option value="notEqual">Diverso</option>
+                            <option value="greaterThan">&gt;</option>
+                            <option value="greaterThanOrEqual">&gt;=</option>
+                            <option value="lessThan">&lt;</option>
+                            <option value="lessThanOrEqual">&lt;=</option>
+                            <option value="startsWith">Inizia con</option>
+                            <option value="endsWith">Finisce con</option>
+                        </select>
+                        <input 
+                            type="text" 
+                            value={filterValue.value || ''} 
+                            onChange={(e) => { e.stopPropagation(); onFilterChange('value', e.target.value); }}
+                            className="bg-[#2b2b2b] text-xs text-white border border-gray-600 rounded px-1 w-20"
+                            onClick={(e) => e.stopPropagation()} 
+                            onPointerDown={(e) => e.stopPropagation()} 
+                            placeholder="Val"
+                        />
+                    </div>
+                )}
                 
                 {onRemove && (
                     <button 
@@ -97,11 +177,32 @@ function SortableItem({ id, children, onRemove, onAggregationChange, aggregation
     );
 }
 
-function DroppableContainer({ id, items, title, onRemoveItem, onAggregationChange, placeholder, metricsMeta, isAvailableList, hasGroups }: any) {
+function DroppableContainer({ 
+    id, 
+    items, 
+    title, 
+    onRemoveItem, 
+    onAggregationChange, 
+    placeholder, 
+    metricsMeta, 
+    isAvailableList, 
+    hasGroups,
+    /* STARTED NEW FEATURE: OrderBy/FilterBy - New props */
+    onSortChange,
+    sortMeta,
+    onFilterChange,  // Placeholder for future filter logic
+    filterMeta
+    /* END NEW FEATURE */
+}: any) {
     const { setNodeRef } = useDroppable({ id });
 
     const renderedItems = items.map((itemId: string) => {
-        const meta = metricsMeta ? metricsMeta[itemId] : null;
+        const realField = getFieldFromId(itemId);
+        // Metadata usually keyed by ANY id (if unique) or FIELD?
+        // Aggregations are for value fields (no prefix).
+        // Sort/Filter meta are for field names.
+        
+        const meta = metricsMeta ? metricsMeta[realField] : null;
         const aggregation = meta ? meta.aggregation : null;
         
         // Show aggregation select only if we have groups (user request) OR if explicitly enabled
@@ -109,6 +210,10 @@ function DroppableContainer({ id, items, title, onRemoveItem, onAggregationChang
         // So we pass 'hasGroups' to SortableItem or handled here.
         // If hasGroups is false, and this is 'values' container (which has onAggregationChange), hide select?
         const showAgg = onAggregationChange && hasGroups;
+
+        /* STARTED NEW FEATURE: OrderBy/FilterBy */
+        const sortDirection = sortMeta ? sortMeta[realField] : null;
+        const filterVal = filterMeta ? filterMeta[realField] : null;
 
         return (
             <SortableItem 
@@ -118,13 +223,20 @@ function DroppableContainer({ id, items, title, onRemoveItem, onAggregationChang
                 onAggregationChange={showAgg ? (val: string) => onAggregationChange(itemId, val) : null}
                 aggregation={aggregation}
                 isAvailableList={isAvailableList}
+                // New props
+                onSortChange={onSortChange ? (val: string) => onSortChange(realField, val) : null}
+                sortDirection={sortDirection}
+                onFilterChange={onFilterChange ? (key: string, val: any) => onFilterChange(realField, key, val) : null}
+                filterValue={filterVal}
             >
                {itemId} 
             </SortableItem> 
         );
+        /* END NEW FEATURE */
     });
 
     if (isAvailableList) {
+
         return (
             <SortableContext id={id} items={items} strategy={verticalListSortingStrategy}>
                 <div ref={setNodeRef} className="flex-1 p-2 min-h-[50px]">
@@ -174,18 +286,39 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
       rows: string[];
       columns: string[];
       values: string[];
+      /* STARTED NEW FEATURE: OrderBy/FilterBy - State */
+      orderBy: string[]; // IDs prefixed with 'sort:'
+      filterBy: string[]; // IDs prefixed with 'filter:'
+      /* END NEW FEATURE */
   }>({
       available: [],
       rows: [],
       columns: [],
-      values: []
+      values: [],
+      /* STARTED NEW FEATURE: OrderBy/FilterBy - Init */
+      orderBy: [],
+      filterBy: []
+      /* END NEW FEATURE */
   });
 
   // Metadata for metrics (aggregation types)
   const [metricsMeta, setMetricsMeta] = useState<Record<string, { aggregation: string }>>({});
+  
+  /* STARTED NEW FEATURE: OrderBy/FilterBy - Metadata State */
+  const [sortMeta, setSortMeta] = useState<Record<string, 'asc' | 'desc'>>({});
+  const [filterMeta, setFilterMeta] = useState<Record<string, { type: string, value: any }>>({});
+  /* END NEW FEATURE */
 
   const [activeId, setActiveId] = useState<string | null>(null);
   
+  // Track start container to revert accidental moves during drag
+  const [startContainer, setStartContainer] = useState<string | null>(null);
+  // Track start index to restore item to exact position
+  const [startIndex, setStartIndex] = useState<number | null>(null);
+  
+  // Logic Fix: Track a version number to force-sync parent when drag ends
+  const [dragVersion, setDragVersion] = useState(0);
+
   // Track if we are currently dragging to avoid updates during drag
   const isDraggingRef = useRef(false);
 
@@ -200,6 +333,27 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
     const currentColumns = config.columns || [];
     const currentValues = config.values || [];
     
+    // Parse Sort and Filter with fallback
+    const currentOrderBy = config.orderBy || [];
+    const currentFilters = config.filters || [];
+
+    // Prefix IDs for internal state
+    const orderByIds = currentOrderBy.map(o => `sort:${o.field}`);
+    const filterByIds = currentFilters.map(f => `filter:${f.field}`);
+
+    const newSortMeta: Record<string, 'asc' | 'desc'> = {};
+    currentOrderBy.forEach(o => {
+        newSortMeta[o.field] = o.direction;
+    });
+    setSortMeta(prev => ({ ...prev, ...newSortMeta }));
+
+    const newFilterMeta: Record<string, { type: string, value: any }> = {};
+    currentFilters.forEach(f => {
+        newFilterMeta[f.field] = { type: f.type, value: f.value };
+    });
+    setFilterMeta(prev => ({ ...prev, ...newFilterMeta }));
+    /* END NEW FEATURE */
+    
     // Extract value IDs and metadata
     const valueIds = currentValues.map(v => v.field);
     const newMetricsMeta: Record<string, { aggregation: string }> = {};
@@ -213,6 +367,7 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
         ...currentRows,
         ...currentColumns,
         ...valueIds
+        /* NOTE: We do NOT include orderBy/filterBy in 'used' so they remain available */
     ]);
     
     const available = colNames.filter((c: string) => !used.has(c));
@@ -221,9 +376,14 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
         available,
         rows: currentRows,
         columns: currentColumns,
-        values: valueIds
+        values: valueIds,
+        /* STARTED NEW FEATURE: OrderBy/FilterBy - Set State */
+        orderBy: orderByIds,
+        filterBy: filterByIds
+        /* END NEW FEATURE */
     });
-  }, [availableColumns]); // Breaking dependency loops: don't depend on 'config' here, only init on mount or cols change
+  }, [availableColumns]); // Breaking dependency loops
+
 
   // --- AUTO-CORRECT AGGREGATIONS WHEN GROUPING ADDED ---
   useEffect(() => {
@@ -273,14 +433,38 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
         };
     });
     
+    /* STARTED NEW FEATURE: OrderBy/FilterBy - Reconstruct complex objects */
+    const complexOrderBy: BiGridSort[] = items.orderBy.map(id => {
+        const field = getFieldFromId(id);
+        return {
+            field: field,
+            direction: sortMeta[field] || 'asc'
+        };
+    });
+    
+    const complexFilters: BiGridFilter[] = items.filterBy.map(id => {
+        const field = getFieldFromId(id);
+        const meta = filterMeta[field] || { type: 'contains', value: '' };
+        return {
+            field: field,
+            type: meta.type,
+            value: meta.value
+        };
+    });
+    /* END NEW FEATURE */
+
     // Only trigger if changes are real (comparisons logic omitted for simplicity, relying on parent dup check if any)
     onChange({
         rows: items.rows,
         columns: items.columns,
-        values: complexValues
+        values: complexValues,
+        /* STARTED NEW FEATURE: OrderBy/FilterBy - Pass to parent */
+        orderBy: complexOrderBy,
+        filters: complexFilters
+        /* END NEW FEATURE */
     });
 
-  }, [items.rows, items.columns, items.values, metricsMeta, columnTypes]);
+  }, [items.rows, items.columns, items.values, items.orderBy, items.filterBy, metricsMeta, sortMeta, filterMeta, columnTypes, dragVersion]);
 
 
   // --- DND HANDLERS ---
@@ -294,29 +478,114 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
     if (items.rows.includes(id)) return 'rows';
     if (items.columns.includes(id)) return 'columns';
     if (items.values.includes(id)) return 'values';
+    /* STARTED NEW FEATURE: OrderBy/FilterBy */
+    if (items.orderBy.includes(id)) return 'orderBy';
+    if (items.filterBy.includes(id)) return 'filterBy';
+    /* END NEW FEATURE */
     return null;
   };
 
+
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string);
+    const id = event.active.id as string;
+    setActiveId(id);
+    const container = findContainer(id);
+    setStartContainer(container);
+    if (container) {
+        setStartIndex(items[container as keyof typeof items]?.indexOf(id) ?? null);
+    }
     isDraggingRef.current = true;
   };
 
   const handleDragOver = (event: DragOverEvent) => {
       const { active, over } = event;
-      if (!over) return;
       
+      if (!over) return;
+
       const activeContainer = findContainer(active.id as string);
-      // If over a container directly (e.g. empty placeholder) use its id, else find the item's container
       const overContainer = (over.id in items) 
           ? over.id 
           : findContainer(over.id as string);
 
-      if (!activeContainer || !overContainer || activeContainer === overContainer) {
+      if (!activeContainer || !overContainer) {
+          return;
+      }
+      
+      // Moving between containers logic
+      // We do NOT want to move items out of 'OrderBy/FilterBy' back to others via DragOver
+      // because we handle duplication logic on Drop. 
+      // HOWEVER, dnd-kit visual feedback depends on items actually changing containers/positions.
+      
+      // If we are dragging TO OrderBy or FilterBy, we only visually move if source is the same container.
+      // If source is different (e.g. Available -> OrderBy), distinct logic applies.
+      
+      // If active item is from OrderBy/FilterBy and over same container, standard sort.
+      if (activeContainer === overContainer) {
+         if (active.id !== over.id) {
+             // Let internal sorting happen in dragOver or dragEnd. 
+             // Usually standard dnd-kit examples do sorting in DragOver for visual feedback.
+              setItems((prev: any) => {
+                  const activeItems = prev[activeContainer];
+                  const activeIndex = activeItems.indexOf(active.id);
+                  const overIndex = activeItems.indexOf(over.id);
+                  return {
+                      ...prev,
+                      [activeContainer]: arrayMove(prev[activeContainer], activeIndex, overIndex)
+                  };
+              });
+         }
+         return;
+      }
+
+      // If dragging BETWEEN different containers
+      // Special Logic for OrderBy/FilterBy:
+      // - If dragging INTO OrderBy/FilterBy: We want to show a "copy" indicator ideally, 
+      //   but dnd-kit moves. We defer the actual logic to DragEnd to avoid mutating state prematurely
+      //   with "sort:*" prefixes during drag.
+      
+      // Standard Containers (Rows/Cols/Values/Available) can swap freely as before.
+      const isSpecial = (c: string) => c === 'orderBy' || c === 'filterBy';
+      
+      // If involving special containers, skip DragOver updates to prevent state corruption/flickering.
+      // Logic handled in DragEnd.
+      if (isSpecial(activeContainer as string) || isSpecial(overContainer as string)) {
+          // Visual Fix: If we are hovering over specific special zones, reset any intermediate states
+          if (isSpecial(overContainer as string)) {
+             if (startContainer && !isSpecial(startContainer) && activeContainer !== startContainer) {
+                 setItems((prev: any) => {
+                      if (!prev[activeContainer]?.includes(active.id)) return prev;
+                      if (!prev[startContainer]) return prev;
+  
+                      // Remove from activeContainer (intermediate)
+                      const intermediateRemoved = prev[activeContainer].filter((id: string) => id !== active.id);
+                      
+                      // Add back to startContainer at ORIGINAL INDEX
+                      const sourceList = [...prev[startContainer]];
+                      if (startIndex !== null && startIndex >= 0 && startIndex <= sourceList.length) {
+                          sourceList.splice(startIndex, 0, active.id);
+                      } else {
+                          sourceList.push(active.id);
+                      }
+  
+                      return {
+                          ...prev,
+                          [activeContainer]: intermediateRemoved,
+                          [startContainer]: sourceList
+                       };
+                 });
+             }
+          }
           return;
       }
 
-      // Moving between containers during drag (optimistic UI)
+      // START FIX: Prevent dragging from GroupBy/SplitBy to Values to avoid accidental "copy in columns"
+      // If the user intends to move to OrderBy, they might cross Values. 
+      // We block move to "values" if active is "rows"/"columns" solely to protect against this?
+      // No, that breaks valid use case.
+      // Better: In handleDragEnd, if it ended up in OrderBy, we undo the move.
+      // So no change here.
+      
+      // Standard behavior for standard containers
       setItems((prev: any) => {
           const activeItems = prev[activeContainer];
           const overItems = prev[overContainer];
@@ -331,7 +600,7 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
           } else {
             const isBelowOverItem =
             over &&
-            active.rect.current.translated &&
+            active.rect.current?.translated &&
             active.rect.current.translated.top >
               (over.rect.top + over.rect.height);
 
@@ -355,44 +624,105 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
 
   const handleDragEnd = (event: DragEndEvent) => {
       const { active, over } = event;
-      const activeContainer = findContainer(active.id as string);
-      let overContainer: any = null;
-      if (over) {
-        overContainer = (over.id in items) ? over.id : findContainer(over.id as string);
+      if (!over) {
+        setActiveId(null);
+        isDraggingRef.current = false;
+        return;
       }
 
-      if (activeContainer && overContainer && activeContainer === overContainer) {
-          const activeIndex = items[activeContainer as keyof typeof items].indexOf(active.id as string);
-          const overIndex = items[overContainer as keyof typeof items].indexOf(over!.id as string);
+      const activeContainer = findContainer(active.id as string);
+      const overContainer = (over.id in items) ? over.id : findContainer(over.id as string);
+      
+      if (!activeContainer || !overContainer) {
+           setActiveId(null);
+           isDraggingRef.current = false;
+           return;
+      }
+
+      const activeField = getFieldFromId(active.id as string);
+
+      // --- LOGIC FOR ORDER BY / FILTER BY ---
+      if (overContainer === 'orderBy' || overContainer === 'filterBy') {
+          // 1. Determine new ID
+          const prefix = overContainer === 'orderBy' ? 'sort:' : 'filter:';
+          const newId = `${prefix}${activeField}`;
+
+          // Checks for special list
+          const isSpecial = (k: string) => k === 'orderBy' || k === 'filterBy';
+          const isSpecialStart = isSpecial(startContainer);
           
-          if (activeIndex !== overIndex) {
+          // Initialize sortMeta/filterMeta for new field BEFORE setItems
+          if (overContainer === 'orderBy' && !sortMeta[activeField]) {
+              setSortMeta((prev: Record<string, 'asc' | 'desc'>) => ({ ...prev, [activeField]: 'asc' }));
+          }
+          if (overContainer === 'filterBy' && !filterMeta[activeField]) {
+              setFilterMeta((prev: Record<string, { type: string, value: any }>) => ({ ...prev, [activeField]: { type: 'contains', value: '' } }));
+          }
+
+          setItems((prev: any) => {
+              const newState = { ...prev };
+
+              // A. Add to target (COPY) if not exists
+              if (!newState[overContainer].includes(newId)) {
+                   newState[overContainer] = [...newState[overContainer], newId];
+              }
+
+              // B. Restore to startContainer if it was lost (standard behavior removed it)
+              // Only if we started in a standard container (rows, columns, values, available)
+              if (startContainer && !isSpecialStart && !newState[startContainer].includes(active.id)) {
+                  // Put it back in startContainer at ORIGINAL INDEX
+                  const sourceList = [...newState[startContainer]];
+                  if (startIndex !== null && startIndex >= 0 && startIndex <= sourceList.length) {
+                      sourceList.splice(startIndex, 0, active.id);
+                  } else {
+                      sourceList.push(active.id);
+                  }
+                  newState[startContainer] = sourceList;
+                  
+                  // Disable the "move" that happened. 
+                  // Find where it is now (likely 'values' due to drag-over) and remove it
+                  const currentContainer = Object.keys(newState).find(k => 
+                      !isSpecial(k) && k !== startContainer && newState[k].includes(active.id)
+                  );
+                  
+                  if (currentContainer) {
+                       newState[currentContainer] = newState[currentContainer].filter((id: string) => id !== active.id);
+                  }
+              }
+
+              return newState;
+          });
+      }
+      // --- LOGIC FOR DROPPING special item INTO TRASH (Available or other) ---
+      else if ((activeContainer === 'orderBy' || activeContainer === 'filterBy') && overContainer !== activeContainer) {
+          // Remove from special container
+          setItems((prev: any) => ({
+              ...prev,
+              [activeContainer]: prev[activeContainer].filter((id: string) => id !== active.id)
+          }));
+          // Do NOT add to 'available' or 'rows' because the field likely already exists there (implicit copy)
+      }
+      // --- STANDARD LOGIC (Available <-> Rows <-> Cols <-> Values) ---
+      else if (activeContainer === overContainer) {
+           // Sorting within same container
+           // (Already handled in DragOver for standard, checking again for safety)
+           const activeIndex = items[activeContainer as keyof typeof items].indexOf(active.id as string);
+           const overIndex = items[overContainer as keyof typeof items].indexOf(over.id as string);
+           
+           if (activeIndex !== overIndex) {
               setItems((prev: any) => ({
                   ...prev,
                   [activeContainer]: arrayMove(prev[activeContainer], activeIndex, overIndex)
               }));
-          }
-      }
+           }
+      } 
+      // Note: DragOver handles cross-container moves for standard types. 
+      // But if we disabled it in DragOver for special types, we are safe.
+      
       setActiveId(null);
       isDraggingRef.current = false;
-      
-      // Force a sync tick after drag ends
-      const complexValues: BiGridMetric[] = items.values.map((id: string) => {
-        let agg = metricsMeta[id]?.aggregation;
-        if (!agg) {
-            const type = columnTypes[id];
-            agg = (type === 'number' || type === 'float' || type === 'integer') ? 'sum' : 'count';
-        }
-        return {
-            id,
-            field: id,
-            aggregation: agg as any
-        };
-      });
-      onChange({
-        rows: items.rows,
-        columns: items.columns,
-        values: complexValues
-      });
+      // Force sync with parent after drag ends
+      setDragVersion(v => v + 1);
   };
 
   const handleRemove = (id: string, from: string) => {
@@ -409,6 +739,24 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
           [id]: { aggregation: agg }
       }));
   };
+
+  /* STARTED NEW FEATURE: OrderBy/FilterBy - Handlers */
+  const handleSortChange = (id: string, direction: 'asc' | 'desc') => {
+      setSortMeta(prev => ({
+            ...prev,
+            [id]: direction
+      }));
+  };
+  const handleFilterChange = (id: string, key: 'type' | 'value', val: any) => {
+      setFilterMeta(prev => ({
+          ...prev,
+          [id]: { 
+              ...prev[id] || { type: 'contains', value: '' },
+              [key]: val 
+          }
+      }));
+  };
+  /* END NEW FEATURE */
 
   return (
     <DndContext 
@@ -452,9 +800,34 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
                     hasGroups={items.rows.length > 0}
                     placeholder=""
                 />
+
+                {/* STARTED NEW FEATURE: OrderBy/FilterBy - New Containers */}
+                <DroppableContainer 
+                    id="orderBy"
+                    title="Order By"
+                    items={items.orderBy}
+                    onRemoveItem={(id: string) => handleRemove(id, 'orderBy')}
+                    onSortChange={handleSortChange}
+                    sortMeta={sortMeta}
+                    placeholder=""
+                />
+
+                <DroppableContainer 
+                    id="filterBy"
+                    title="Filter By"
+                    items={items.filterBy}
+                    onRemoveItem={(id: string) => handleRemove(id, 'filterBy')}
+                    onFilterChange={handleFilterChange}
+                    filterMeta={filterMeta}
+                    placeholder=""
+                />
+                {/* END NEW FEATURE */
+                }
+
              </div>
 
              {/* 2. Available Columns (Bottom Part) */}
+
              <div className="h-1/3 flex flex-col min-h-[150px] border-t border-[#333] bg-[#2b2b2b]">
                  <div className="px-3 py-2 font-bold text-blue-400 text-[10px] uppercase tracking-wider">
                     All Columns
