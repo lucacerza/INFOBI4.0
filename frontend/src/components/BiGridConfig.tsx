@@ -59,10 +59,15 @@ interface BiGridConfigProps {
 // --- DRAG & DROP COMPONENTS ---
 
 // Helper to strip prefixes for display/logic
+// Filter IDs can be: filter:fieldname:timestamp (for multiple filters on same field)
 const getFieldFromId = (id: string | null) => {
     if (!id) return '';
     if (id.startsWith('sort:')) return id.replace('sort:', '');
-    if (id.startsWith('filter:')) return id.replace('filter:', '');
+    if (id.startsWith('filter:')) {
+        // Handle filter:field:timestamp format
+        const parts = id.replace('filter:', '').split(':');
+        return parts[0]; // Return just the field name
+    }
     return id;
 };
 
@@ -92,11 +97,69 @@ function SortableItem({
 
     const displayLabel = getFieldFromId(children as string);
 
+    // Filter items have a different layout (2 rows)
+    if (onFilterChange) {
+        return (
+            <div ref={setNodeRef} style={style}
+                 className="flex flex-col px-2 py-1 mb-1 bg-[#404040] border border-[#555] rounded cursor-move select-none text-xs text-gray-200"
+            >
+                {/* Row 1: Field name + remove button */}
+                <div className="flex items-center justify-between mb-1" {...attributes} {...listeners}>
+                    <div className="flex items-center gap-2">
+                        <GripVertical size={12} className="text-gray-500 flex-shrink-0" />
+                        <span className="font-sans font-medium text-blue-300">{displayLabel}</span>
+                    </div>
+                    {onRemove && (
+                        <button
+                            type="button"
+                            title="Rimuovi filtro"
+                            onClick={(e) => { e.stopPropagation(); onRemove(id); }}
+                            className="text-gray-500 hover:text-red-400 ml-2"
+                            onPointerDown={(e) => e.stopPropagation()}
+                        >
+                            <X size={14} />
+                        </button>
+                    )}
+                </div>
+                {/* Row 2: Filter controls */}
+                <div className="flex items-center gap-1 pl-5">
+                    <select
+                        title="Tipo di confronto"
+                        value={filterValue?.type || 'contains'}
+                        onChange={(e) => { e.stopPropagation(); onFilterChange('type', e.target.value); }}
+                        className="bg-[#2b2b2b] text-[10px] text-white border border-gray-600 rounded px-1 flex-shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
+                    >
+                        <option value="contains">Contiene</option>
+                        <option value="equals">=</option>
+                        <option value="notEqual">≠</option>
+                        <option value="greaterThan">&gt;</option>
+                        <option value="greaterThanOrEqual">≥</option>
+                        <option value="lessThan">&lt;</option>
+                        <option value="lessThanOrEqual">≤</option>
+                        <option value="startsWith">Inizia</option>
+                        <option value="endsWith">Finisce</option>
+                    </select>
+                    <input
+                        type="text"
+                        value={filterValue?.value || ''}
+                        onChange={(e) => { e.stopPropagation(); onFilterChange('value', e.target.value); }}
+                        className="bg-[#2b2b2b] text-xs text-white border border-gray-600 rounded px-1 flex-1 min-w-0"
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        placeholder="Valore..."
+                    />
+                </div>
+            </div>
+        );
+    }
+
     return (
-        <div ref={setNodeRef} style={style} 
+        <div ref={setNodeRef} style={style}
              className={`
-                flex items-center justify-between px-2 py-1 mb-1 
-                ${isAvailableList ? 'bg-transparent hover:bg-[#404040] border-transparent' : 'bg-[#404040] border-[#555]'} 
+                flex items-center justify-between px-2 py-1 mb-1
+                ${isAvailableList ? 'bg-transparent hover:bg-[#404040] border-transparent' : 'bg-[#404040] border-[#555]'}
                 border rounded cursor-move select-none text-xs text-gray-200 group
              `}
         >
@@ -104,14 +167,14 @@ function SortableItem({
                 <GripVertical size={12} className="text-gray-500 flex-shrink-0" />
                 <span className="truncate font-sans">{displayLabel}</span>
             </div>
-            
+
             <div className="flex items-center gap-1">
                 {onAggregationChange && (
-                    <select 
-                        value={aggregation || 'sum'} 
+                    <select
+                        value={aggregation || 'sum'}
                         onChange={(e) => { e.stopPropagation(); onAggregationChange(e.target.value); }}
-                        onClick={(e) => e.stopPropagation()} 
-                        onPointerDown={(e) => e.stopPropagation()} 
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
                         className="text-[10px] px-1 py-0.5 border border-[#555] rounded bg-[#2b2b2b] text-gray-300 focus:outline-none focus:border-blue-500"
                     >
                         <option value="sum">sum</option>
@@ -130,38 +193,6 @@ function SortableItem({
                    >
                        {sortDirection === 'asc' ? 'ASC' : 'DESC'}
                    </button>
-                )}
-                {/* END NEW FEATURE */ }
-
-                {onFilterChange && filterValue && (
-                    <div className="flex items-center gap-1">
-                        <select 
-                            value={filterValue.type || 'contains'} 
-                            onChange={(e) => { e.stopPropagation(); onFilterChange('type', e.target.value); }}
-                            className="bg-[#2b2b2b] text-xs text-white border border-gray-600 rounded px-1 w-20"
-                            onClick={(e) => e.stopPropagation()} 
-                            onPointerDown={(e) => e.stopPropagation()} 
-                         >
-                            <option value="contains">Contiene</option>
-                            <option value="equals">Uguale</option>
-                            <option value="notEqual">Diverso</option>
-                            <option value="greaterThan">&gt;</option>
-                            <option value="greaterThanOrEqual">&gt;=</option>
-                            <option value="lessThan">&lt;</option>
-                            <option value="lessThanOrEqual">&lt;=</option>
-                            <option value="startsWith">Inizia con</option>
-                            <option value="endsWith">Finisce con</option>
-                        </select>
-                        <input 
-                            type="text" 
-                            value={filterValue.value || ''} 
-                            onChange={(e) => { e.stopPropagation(); onFilterChange('value', e.target.value); }}
-                            className="bg-[#2b2b2b] text-xs text-white border border-gray-600 rounded px-1 w-20"
-                            onClick={(e) => e.stopPropagation()} 
-                            onPointerDown={(e) => e.stopPropagation()} 
-                            placeholder="Val"
-                        />
-                    </div>
                 )}
                 
                 {onRemove && (
@@ -213,12 +244,13 @@ function DroppableContainer({
 
         /* STARTED NEW FEATURE: OrderBy/FilterBy */
         const sortDirection = sortMeta ? sortMeta[realField] : null;
-        const filterVal = filterMeta ? filterMeta[realField] : null;
+        // For filters, use the full itemId as key (includes timestamp for uniqueness)
+        const filterVal = filterMeta ? filterMeta[itemId] : null;
 
         return (
-            <SortableItem 
-                key={itemId} 
-                id={itemId} 
+            <SortableItem
+                key={itemId}
+                id={itemId}
                 onRemove={onRemoveItem}
                 onAggregationChange={showAgg ? (val: string) => onAggregationChange(itemId, val) : null}
                 aggregation={aggregation}
@@ -226,10 +258,11 @@ function DroppableContainer({
                 // New props
                 onSortChange={onSortChange ? (val: string) => onSortChange(realField, val) : null}
                 sortDirection={sortDirection}
-                onFilterChange={onFilterChange ? (key: string, val: any) => onFilterChange(realField, key, val) : null}
+                // For filters, pass itemId to onFilterChange so we update the correct entry
+                onFilterChange={onFilterChange ? (key: string, val: any) => onFilterChange(itemId, key, val) : null}
                 filterValue={filterVal}
             >
-               {itemId} 
+               {itemId}
             </SortableItem> 
         );
         /* END NEW FEATURE */
@@ -339,7 +372,8 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
 
     // Prefix IDs for internal state
     const orderByIds = currentOrderBy.map(o => `sort:${o.field}`);
-    const filterByIds = currentFilters.map(f => `filter:${f.field}`);
+    // For filters: use unique IDs to allow multiple filters on same field
+    const filterByIds = currentFilters.map((f, idx) => `filter:${f.field}:${Date.now() + idx}`);
 
     const newSortMeta: Record<string, 'asc' | 'desc'> = {};
     currentOrderBy.forEach(o => {
@@ -347,9 +381,11 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
     });
     setSortMeta(prev => ({ ...prev, ...newSortMeta }));
 
+    // For filters: use the full unique ID as key
     const newFilterMeta: Record<string, { type: string, value: any }> = {};
-    currentFilters.forEach(f => {
-        newFilterMeta[f.field] = { type: f.type, value: f.value };
+    currentFilters.forEach((f, idx) => {
+        const filterId = filterByIds[idx];
+        newFilterMeta[filterId] = { type: f.type, value: f.value };
     });
     setFilterMeta(prev => ({ ...prev, ...newFilterMeta }));
     /* END NEW FEATURE */
@@ -444,7 +480,8 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
     
     const complexFilters: BiGridFilter[] = items.filterBy.map(id => {
         const field = getFieldFromId(id);
-        const meta = filterMeta[field] || { type: 'contains', value: '' };
+        // Use full ID as key for filterMeta (allows multiple filters on same field)
+        const meta = filterMeta[id] || { type: 'contains', value: '' };
         return {
             field: field,
             type: meta.type,
@@ -641,29 +678,43 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
 
       const activeField = getFieldFromId(active.id as string);
 
+      console.log('🔍 handleDragEnd:', { activeId: active.id, activeContainer, overContainer, activeField, startContainer });
+
       // --- LOGIC FOR ORDER BY / FILTER BY ---
       if (overContainer === 'orderBy' || overContainer === 'filterBy') {
           // 1. Determine new ID
-          const prefix = overContainer === 'orderBy' ? 'sort:' : 'filter:';
-          const newId = `${prefix}${activeField}`;
+          // For filterBy: use unique ID with timestamp to allow multiple filters on same field
+          // For orderBy: use simple ID (no duplicates allowed)
+          let newId: string;
+          if (overContainer === 'filterBy') {
+              newId = `filter:${activeField}:${Date.now()}`;
+              console.log('🔍 FilterBy: Creating new filter with ID:', newId, 'from field:', activeField);
+          } else {
+              newId = `sort:${activeField}`;
+          }
 
           // Checks for special list
           const isSpecial = (k: string) => k === 'orderBy' || k === 'filterBy';
           const isSpecialStart = isSpecial(startContainer);
-          
+
           // Initialize sortMeta/filterMeta for new field BEFORE setItems
           if (overContainer === 'orderBy' && !sortMeta[activeField]) {
               setSortMeta((prev: Record<string, 'asc' | 'desc'>) => ({ ...prev, [activeField]: 'asc' }));
           }
-          if (overContainer === 'filterBy' && !filterMeta[activeField]) {
-              setFilterMeta((prev: Record<string, { type: string, value: any }>) => ({ ...prev, [activeField]: { type: 'contains', value: '' } }));
+          // For filterBy: always initialize with unique ID as key
+          if (overContainer === 'filterBy') {
+              setFilterMeta((prev: Record<string, { type: string, value: any }>) => ({ ...prev, [newId]: { type: 'contains', value: '' } }));
           }
 
           setItems((prev: any) => {
               const newState = { ...prev };
 
-              // A. Add to target (COPY) if not exists
-              if (!newState[overContainer].includes(newId)) {
+              // A. Add to target
+              // For filterBy: always add (allows duplicates with unique IDs)
+              // For orderBy: only if not exists
+              if (overContainer === 'filterBy') {
+                  newState[overContainer] = [...newState[overContainer], newId];
+              } else if (!newState[overContainer].includes(newId)) {
                    newState[overContainer] = [...newState[overContainer], newId];
               }
 

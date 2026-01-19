@@ -141,7 +141,10 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
         const sortModel = orderBy.map(o => ({ colId: o.field, sort: o.direction }));
         const filterModel: any = {};
         filters.forEach(f => {
-            filterModel[f.field] = { filter: f.value, type: f.type };
+            // Only add filter if value is not empty
+            if (f.value !== undefined && f.value !== '') {
+                filterModel[f.field] = { filterType: 'text', type: f.type, filter: f.value };
+            }
         });
         /* END NEW FEATURE */
 
