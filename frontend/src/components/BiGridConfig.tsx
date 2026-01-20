@@ -41,12 +41,20 @@ export interface BiGridFilter {
   value: any;
 }
 
+export interface BiGridHaving {
+  field: string;       // Nome del campo aggregato (es. Venduto)
+  aggregation: string; // Funzione di aggregazione (sum, avg, count, etc.)
+  type: string;        // Tipo confronto (greaterThan, lessThan, equals, etc.)
+  value: any;          // Valore di confronto
+}
+
 export interface BiGridConfigData {
   rows?: string[];
   columns?: string[];
   values?: BiGridMetric[];
   orderBy?: BiGridSort[];
   filters?: BiGridFilter[];
+  having?: BiGridHaving[];
 }
 /* END NEW FEATURE */
 
@@ -60,6 +68,7 @@ interface BiGridConfigProps {
 
 // Helper to strip prefixes for display/logic
 // Filter IDs can be: filter:fieldname:timestamp (for multiple filters on same field)
+// Having IDs can be: having:fieldname:timestamp (for multiple having on same field)
 const getFieldFromId = (id: string | null) => {
     if (!id) return '';
     if (id.startsWith('sort:')) return id.replace('sort:', '');
@@ -68,22 +77,30 @@ const getFieldFromId = (id: string | null) => {
         const parts = id.replace('filter:', '').split(':');
         return parts[0]; // Return just the field name
     }
+    if (id.startsWith('having:')) {
+        // Handle having:field:timestamp format
+        const parts = id.replace('having:', '').split(':');
+        return parts[0]; // Return just the field name
+    }
     return id;
 };
 
-function SortableItem({ 
-    id, 
-    children, 
-    onRemove, 
-    onAggregationChange, 
-    aggregation, 
+function SortableItem({
+    id,
+    children,
+    onRemove,
+    onAggregationChange,
+    aggregation,
     isAvailableList,
     /* STARTED NEW FEATURE: OrderBy/FilterBy - New props */
     onSortChange,
     sortDirection,
     onFilterChange,
-    filterValue
+    filterValue,
     /* END NEW FEATURE */
+    // Having props
+    onHavingChange,
+    havingValue
 }: any) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
     
@@ -155,6 +172,75 @@ function SortableItem({
         );
     }
 
+    // Having items have a different layout (3 rows: field, aggregation, condition)
+    if (onHavingChange) {
+        return (
+            <div ref={setNodeRef} style={style}
+                 className="flex flex-col px-2 py-1 mb-1 bg-[#404040] border border-[#555] rounded cursor-move select-none text-xs text-gray-200"
+            >
+                {/* Row 1: Field name + remove button */}
+                <div className="flex items-center justify-between mb-1" {...attributes} {...listeners}>
+                    <div className="flex items-center gap-2">
+                        <GripVertical size={12} className="text-gray-500 flex-shrink-0" />
+                        <span className="font-sans font-medium text-orange-300">{displayLabel}</span>
+                    </div>
+                    {onRemove && (
+                        <button
+                            type="button"
+                            title="Rimuovi having"
+                            onClick={(e) => { e.stopPropagation(); onRemove(id); }}
+                            className="text-gray-500 hover:text-red-400 ml-2"
+                            onPointerDown={(e) => e.stopPropagation()}
+                        >
+                            <X size={14} />
+                        </button>
+                    )}
+                </div>
+                {/* Row 2: Aggregation selector + comparison + value */}
+                <div className="flex items-center gap-1 pl-5">
+                    <select
+                        title="Aggregazione"
+                        value={havingValue?.aggregation || 'sum'}
+                        onChange={(e) => { e.stopPropagation(); onHavingChange('aggregation', e.target.value); }}
+                        className="bg-[#2b2b2b] text-[10px] text-white border border-gray-600 rounded px-1 flex-shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
+                    >
+                        <option value="sum">SUM</option>
+                        <option value="avg">AVG</option>
+                        <option value="count">COUNT</option>
+                        <option value="min">MIN</option>
+                        <option value="max">MAX</option>
+                    </select>
+                    <select
+                        title="Tipo di confronto"
+                        value={havingValue?.type || 'greaterThan'}
+                        onChange={(e) => { e.stopPropagation(); onHavingChange('type', e.target.value); }}
+                        className="bg-[#2b2b2b] text-[10px] text-white border border-gray-600 rounded px-1 flex-shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
+                    >
+                        <option value="greaterThan">&gt;</option>
+                        <option value="greaterThanOrEqual">≥</option>
+                        <option value="lessThan">&lt;</option>
+                        <option value="lessThanOrEqual">≤</option>
+                        <option value="equals">=</option>
+                        <option value="notEqual">≠</option>
+                    </select>
+                    <input
+                        type="number"
+                        value={havingValue?.value ?? ''}
+                        onChange={(e) => { e.stopPropagation(); onHavingChange('value', e.target.value); }}
+                        className="bg-[#2b2b2b] text-xs text-white border border-gray-600 rounded px-1 flex-1 min-w-0 w-16"
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        placeholder="Valore..."
+                    />
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div ref={setNodeRef} style={style}
              className={`
@@ -208,22 +294,25 @@ function SortableItem({
     );
 }
 
-function DroppableContainer({ 
-    id, 
-    items, 
-    title, 
-    onRemoveItem, 
-    onAggregationChange, 
-    placeholder, 
-    metricsMeta, 
-    isAvailableList, 
+function DroppableContainer({
+    id,
+    items,
+    title,
+    onRemoveItem,
+    onAggregationChange,
+    placeholder,
+    metricsMeta,
+    isAvailableList,
     hasGroups,
     /* STARTED NEW FEATURE: OrderBy/FilterBy - New props */
     onSortChange,
     sortMeta,
-    onFilterChange,  // Placeholder for future filter logic
-    filterMeta
+    onFilterChange,
+    filterMeta,
     /* END NEW FEATURE */
+    // Having props
+    onHavingChange,
+    havingMeta
 }: any) {
     const { setNodeRef } = useDroppable({ id });
 
@@ -246,6 +335,8 @@ function DroppableContainer({
         const sortDirection = sortMeta ? sortMeta[realField] : null;
         // For filters, use the full itemId as key (includes timestamp for uniqueness)
         const filterVal = filterMeta ? filterMeta[itemId] : null;
+        // For having, use the full itemId as key (includes timestamp for uniqueness)
+        const havingVal = havingMeta ? havingMeta[itemId] : null;
 
         return (
             <SortableItem
@@ -261,9 +352,12 @@ function DroppableContainer({
                 // For filters, pass itemId to onFilterChange so we update the correct entry
                 onFilterChange={onFilterChange ? (key: string, val: any) => onFilterChange(itemId, key, val) : null}
                 filterValue={filterVal}
+                // For having, pass itemId to onHavingChange so we update the correct entry
+                onHavingChange={onHavingChange ? (key: string, val: any) => onHavingChange(itemId, key, val) : null}
+                havingValue={havingVal}
             >
                {itemId}
-            </SortableItem> 
+            </SortableItem>
         );
         /* END NEW FEATURE */
     });
@@ -323,6 +417,7 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
       orderBy: string[]; // IDs prefixed with 'sort:'
       filterBy: string[]; // IDs prefixed with 'filter:'
       /* END NEW FEATURE */
+      havingBy: string[]; // IDs prefixed with 'having:'
   }>({
       available: [],
       rows: [],
@@ -330,8 +425,9 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
       values: [],
       /* STARTED NEW FEATURE: OrderBy/FilterBy - Init */
       orderBy: [],
-      filterBy: []
+      filterBy: [],
       /* END NEW FEATURE */
+      havingBy: []
   });
 
   // Metadata for metrics (aggregation types)
@@ -341,6 +437,9 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
   const [sortMeta, setSortMeta] = useState<Record<string, 'asc' | 'desc'>>({});
   const [filterMeta, setFilterMeta] = useState<Record<string, { type: string, value: any }>>({});
   /* END NEW FEATURE */
+
+  // Having metadata: keyed by unique ID, stores aggregation, comparison type and value
+  const [havingMeta, setHavingMeta] = useState<Record<string, { aggregation: string, type: string, value: any }>>({});
 
   const [activeId, setActiveId] = useState<string | null>(null);
   
@@ -491,6 +590,19 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
             value: meta.value
         };
     });
+
+    // Build Having array
+    const complexHaving: BiGridHaving[] = items.havingBy.map(id => {
+        const field = getFieldFromId(id);
+        // Use full ID as key for havingMeta (allows multiple having on same field)
+        const meta = havingMeta[id] || { aggregation: 'sum', type: 'greaterThan', value: '' };
+        return {
+            field: field,
+            aggregation: meta.aggregation,
+            type: meta.type,
+            value: meta.value
+        };
+    });
     /* END NEW FEATURE */
 
     // Only trigger if changes are real (comparisons logic omitted for simplicity, relying on parent dup check if any)
@@ -500,11 +612,12 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
         values: complexValues,
         /* STARTED NEW FEATURE: OrderBy/FilterBy - Pass to parent */
         orderBy: complexOrderBy,
-        filters: complexFilters
+        filters: complexFilters,
+        having: complexHaving
         /* END NEW FEATURE */
     });
 
-  }, [items.rows, items.columns, items.values, items.orderBy, items.filterBy, metricsMeta, sortMeta, filterMeta, columnTypes, dragVersion]);
+  }, [items.rows, items.columns, items.values, items.orderBy, items.filterBy, items.havingBy, metricsMeta, sortMeta, filterMeta, havingMeta, columnTypes, dragVersion]);
 
 
   // --- DND HANDLERS ---
@@ -522,6 +635,7 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
     if (items.orderBy.includes(id)) return 'orderBy';
     if (items.filterBy.includes(id)) return 'filterBy';
     /* END NEW FEATURE */
+    if (items.havingBy.includes(id)) return 'havingBy';
     return null;
   };
 
@@ -584,8 +698,8 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
       //   with "sort:*" prefixes during drag.
       
       // Standard Containers (Rows/Cols/Values/Available) can swap freely as before.
-      const isSpecial = (c: string) => c === 'orderBy' || c === 'filterBy';
-      
+      const isSpecial = (c: string) => c === 'orderBy' || c === 'filterBy' || c === 'havingBy';
+
       // If involving special containers, skip DragOver updates to prevent state corruption/flickering.
       // Logic handled in DragEnd.
       if (isSpecial(activeContainer as string) || isSpecial(overContainer as string)) {
@@ -682,22 +796,24 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
       const activeField = getFieldFromId(active.id as string);
 
       // --- LOGIC FOR ORDER BY / FILTER BY ---
-      if (overContainer === 'orderBy' || overContainer === 'filterBy') {
+      if (overContainer === 'orderBy' || overContainer === 'filterBy' || overContainer === 'havingBy') {
           // 1. Determine new ID
-          // For filterBy: use unique ID with timestamp to allow multiple filters on same field
+          // For filterBy/havingBy: use unique ID with timestamp to allow multiple on same field
           // For orderBy: use simple ID (no duplicates allowed)
           let newId: string;
           if (overContainer === 'filterBy') {
               newId = `filter:${activeField}:${Date.now()}`;
+          } else if (overContainer === 'havingBy') {
+              newId = `having:${activeField}:${Date.now()}`;
           } else {
               newId = `sort:${activeField}`;
           }
 
           // Checks for special list
-          const isSpecial = (k: string) => k === 'orderBy' || k === 'filterBy';
+          const isSpecial = (k: string) => k === 'orderBy' || k === 'filterBy' || k === 'havingBy';
           const isSpecialStart = isSpecial(startContainer);
 
-          // Initialize sortMeta/filterMeta for new field BEFORE setItems
+          // Initialize sortMeta/filterMeta/havingMeta for new field BEFORE setItems
           if (overContainer === 'orderBy' && !sortMeta[activeField]) {
               setSortMeta((prev: Record<string, 'asc' | 'desc'>) => ({ ...prev, [activeField]: 'asc' }));
           }
@@ -709,14 +825,25 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
                   dropZonesRef.current?.scrollTo({ top: dropZonesRef.current.scrollHeight, behavior: 'smooth' });
               }, 50);
           }
+          // For havingBy: initialize with unique ID as key
+          if (overContainer === 'havingBy') {
+              setHavingMeta((prev: Record<string, { aggregation: string, type: string, value: any }>) => ({
+                  ...prev,
+                  [newId]: { aggregation: 'sum', type: 'greaterThan', value: '' }
+              }));
+              // Auto-scroll to bottom of drop zones to show new having
+              setTimeout(() => {
+                  dropZonesRef.current?.scrollTo({ top: dropZonesRef.current.scrollHeight, behavior: 'smooth' });
+              }, 50);
+          }
 
           setItems((prev: any) => {
               const newState = { ...prev };
 
               // A. Add to target
-              // For filterBy: always add (allows duplicates with unique IDs)
+              // For filterBy/havingBy: always add (allows duplicates with unique IDs)
               // For orderBy: only if not exists
-              if (overContainer === 'filterBy') {
+              if (overContainer === 'filterBy' || overContainer === 'havingBy') {
                   newState[overContainer] = [...newState[overContainer], newId];
               } else if (!newState[overContainer].includes(newId)) {
                    newState[overContainer] = [...newState[overContainer], newId];
@@ -733,13 +860,13 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
                       sourceList.push(active.id);
                   }
                   newState[startContainer] = sourceList;
-                  
-                  // Disable the "move" that happened. 
+
+                  // Disable the "move" that happened.
                   // Find where it is now (likely 'values' due to drag-over) and remove it
-                  const currentContainer = Object.keys(newState).find(k => 
+                  const currentContainer = Object.keys(newState).find(k =>
                       !isSpecial(k) && k !== startContainer && newState[k].includes(active.id)
                   );
-                  
+
                   if (currentContainer) {
                        newState[currentContainer] = newState[currentContainer].filter((id: string) => id !== active.id);
                   }
@@ -749,7 +876,7 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
           });
       }
       // --- LOGIC FOR DROPPING special item INTO TRASH (Available or other) ---
-      else if ((activeContainer === 'orderBy' || activeContainer === 'filterBy') && overContainer !== activeContainer) {
+      else if ((activeContainer === 'orderBy' || activeContainer === 'filterBy' || activeContainer === 'havingBy') && overContainer !== activeContainer) {
           // Remove from special container
           setItems((prev: any) => ({
               ...prev,
@@ -805,13 +932,24 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
   const handleFilterChange = (id: string, key: 'type' | 'value', val: any) => {
       setFilterMeta(prev => ({
           ...prev,
-          [id]: { 
+          [id]: {
               ...prev[id] || { type: 'contains', value: '' },
-              [key]: val 
+              [key]: val
           }
       }));
   };
   /* END NEW FEATURE */
+
+  // Handler per Having By
+  const handleHavingChange = (id: string, key: 'aggregation' | 'type' | 'value', val: any) => {
+      setHavingMeta(prev => ({
+          ...prev,
+          [id]: {
+              ...prev[id] || { aggregation: 'sum', type: 'greaterThan', value: '' },
+              [key]: val
+          }
+      }));
+  };
 
   return (
     <DndContext 
@@ -867,13 +1005,23 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
                     placeholder=""
                 />
 
-                <DroppableContainer 
+                <DroppableContainer
                     id="filterBy"
                     title="Filter By"
                     items={items.filterBy}
                     onRemoveItem={(id: string) => handleRemove(id, 'filterBy')}
                     onFilterChange={handleFilterChange}
                     filterMeta={filterMeta}
+                    placeholder=""
+                />
+
+                <DroppableContainer
+                    id="havingBy"
+                    title="Having By"
+                    items={items.havingBy}
+                    onRemoveItem={(id: string) => handleRemove(id, 'havingBy')}
+                    onHavingChange={handleHavingChange}
+                    havingMeta={havingMeta}
                     placeholder=""
                 />
                 {/* END NEW FEATURE */

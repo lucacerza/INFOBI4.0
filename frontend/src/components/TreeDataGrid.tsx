@@ -24,9 +24,11 @@ interface TreeDataGridProps {
   orderBy?: { field: string; direction: 'asc' | 'desc' }[];
   filters?: { field: string; type: string; value: any }[];
   /* END NEW FEATURE */
+  // Having By: filter on aggregated values
+  having?: { field: string; aggregation: string; type: string; value: any }[];
 }
 
-export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols = [], previewMode = false, orderBy = [], filters = [] }: TreeDataGridProps) {
+export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols = [], previewMode = false, orderBy = [], filters = [], having = [] }: TreeDataGridProps) {
   // --- STATE ---
   const [data, setData] = useState<any[]>([]); 
   const [expanded, setExpanded] = useState<ExpandedState>({});
@@ -148,14 +150,25 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
         });
         /* END NEW FEATURE */
 
+        // Build havingModel for aggregated value filtering
+        const havingModel = having
+            .filter(h => h.value !== undefined && h.value !== '')
+            .map(h => ({
+                field: h.field,
+                aggregation: h.aggregation,
+                type: h.type,
+                value: h.value
+            }));
+
         const response = await reportsApi.executePivotDrill(reportId, {
             rowGroupCols: rowGroups,
             groupKeys: nodePath,
             valueCols: valueCols.map(v => ({ colId: v.field, aggFunc: v.aggregation })),
             pivotCols: pivotCols,
             filterModel: filterModel,
+            havingModel: havingModel,
             sortModel: sortModel,
-            startRow, 
+            startRow,
             endRow
         });
         const tNet = performance.now();
@@ -642,7 +655,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
     // Cleanup: mark this effect as cancelled if dependencies change
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reportId, JSON.stringify(rowGroups), JSON.stringify(valueCols), JSON.stringify(pivotCols), JSON.stringify(orderBy), JSON.stringify(filters)]); 
+  }, [reportId, JSON.stringify(rowGroups), JSON.stringify(valueCols), JSON.stringify(pivotCols), JSON.stringify(orderBy), JSON.stringify(filters), JSON.stringify(having)]); 
 
   // Auto-resize when data changes or columns update
   useEffect(() => {

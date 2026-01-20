@@ -383,6 +383,7 @@ export default function ReportEditorPage() {
                 previewMode={true}
                 orderBy={pivotConfig.orderBy || []}
                 filters={pivotConfig.filters || []}
+                having={pivotConfig.having || []}
               />
             </div>
           </div>

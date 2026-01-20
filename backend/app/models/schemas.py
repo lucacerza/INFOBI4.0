@@ -147,6 +147,13 @@ class FilterDef(BaseModel):
     type: str  # 'contains', 'equals', 'startsWith', etc
     filter: Any         # Can be string or number
 
+class HavingDef(BaseModel):
+    """Defines a HAVING condition on an aggregated field"""
+    field: str                      # Campo su cui applicare la condizione
+    aggregation: str = 'sum'        # Funzione di aggregazione: sum, avg, count, min, max
+    type: str = 'greaterThan'       # Tipo confronto: greaterThan, lessThan, equals, etc
+    value: Any = None               # Valore di confronto
+
 class GridRequest(BaseModel):
     startRow: int
     endRow: int
@@ -163,6 +170,7 @@ class PivotDrillRequest(BaseModel):
     valueCols: List[ValueCol]
     pivotCols: List[str] = []
     filterModel: Dict[str, FilterDef] = {}
+    havingModel: List[HavingDef] = []  # HAVING conditions on aggregated values
     sortModel: List[SortModel] = []  # Optional sorting
     startRow: Optional[int] = 0
     endRow: Optional[int] = 100

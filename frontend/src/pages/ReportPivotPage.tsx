@@ -212,6 +212,7 @@ export default function ReportPivotPage() {
               rowGroups={pivotConfig.rows}
               orderBy={pivotConfig.orderBy}
               filters={pivotConfig.filters}
+              having={pivotConfig.having || []}
               valueCols={pivotConfig.values}
               pivotCols={pivotConfig.columns}
               previewMode={false}

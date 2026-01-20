@@ -639,13 +639,46 @@ class QueryEngine:
                 order_sql = "ORDER BY key_val ASC"
 
             is_mssql_drill = db_type == "mssql"
-            
+
+            # Build HAVING clause from havingModel
+            having_sql = ""
+            if request.havingModel:
+                having_conditions = []
+                for h in request.havingModel:
+                    clean_field = "".join(c for c in h.field if c.isalnum() or c in '_')
+                    agg = h.aggregation.upper()
+                    val = h.value
+
+                    # Build aggregation expression
+                    if agg == 'COUNT':
+                        agg_expr = f"COUNT(*)"
+                    else:
+                        agg_expr = f"{agg}({clean_field})"
+
+                    # Build comparison
+                    if h.type == 'greaterThan':
+                        having_conditions.append(f"{agg_expr} > {val}")
+                    elif h.type == 'greaterThanOrEqual':
+                        having_conditions.append(f"{agg_expr} >= {val}")
+                    elif h.type == 'lessThan':
+                        having_conditions.append(f"{agg_expr} < {val}")
+                    elif h.type == 'lessThanOrEqual':
+                        having_conditions.append(f"{agg_expr} <= {val}")
+                    elif h.type == 'equals':
+                        having_conditions.append(f"{agg_expr} = {val}")
+                    elif h.type == 'notEqual':
+                        having_conditions.append(f"{agg_expr} != {val}")
+
+                if having_conditions:
+                    having_sql = "HAVING " + " AND ".join(having_conditions)
+
             # WRAP QUERY to ensure aliases are valid in ORDER BY and Pagination
             inner_query = f"""
                 SELECT {select_sql}
                 FROM ({base_query}) AS base
                 {where_sql}
                 GROUP BY {group_by_sql}
+                {having_sql}
             """
             
             if is_mssql_drill:
