@@ -352,6 +352,9 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
   // Logic Fix: Track a version number to force-sync parent when drag ends
   const [dragVersion, setDragVersion] = useState(0);
 
+  // Ref for auto-scroll when adding filters
+  const dropZonesRef = useRef<HTMLDivElement>(null);
+
   // Track if we are currently dragging to avoid updates during drag
   const isDraggingRef = useRef(false);
 
@@ -678,8 +681,6 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
 
       const activeField = getFieldFromId(active.id as string);
 
-      console.log('🔍 handleDragEnd:', { activeId: active.id, activeContainer, overContainer, activeField, startContainer });
-
       // --- LOGIC FOR ORDER BY / FILTER BY ---
       if (overContainer === 'orderBy' || overContainer === 'filterBy') {
           // 1. Determine new ID
@@ -688,7 +689,6 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
           let newId: string;
           if (overContainer === 'filterBy') {
               newId = `filter:${activeField}:${Date.now()}`;
-              console.log('🔍 FilterBy: Creating new filter with ID:', newId, 'from field:', activeField);
           } else {
               newId = `sort:${activeField}`;
           }
@@ -704,6 +704,10 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
           // For filterBy: always initialize with unique ID as key
           if (overContainer === 'filterBy') {
               setFilterMeta((prev: Record<string, { type: string, value: any }>) => ({ ...prev, [newId]: { type: 'contains', value: '' } }));
+              // Auto-scroll to bottom of drop zones to show new filter
+              setTimeout(() => {
+                  dropZonesRef.current?.scrollTo({ top: dropZonesRef.current.scrollHeight, behavior: 'smooth' });
+              }, 50);
           }
 
           setItems((prev: any) => {
@@ -817,10 +821,10 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
     >
-        <div className="flex flex-col h-full bg-[#2b2b2b] text-sm border-r border-[#1a1a1a] w-64 flex-shrink-0 font-sans">
-             
-             {/* 1. Drop Zones (Top Part) */}
-             <div className="flex-1 flex flex-col min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 p-3">
+        <div className="flex flex-col h-full max-h-full bg-[#2b2b2b] text-sm border-r border-[#1a1a1a] w-64 flex-shrink-0 font-sans overflow-hidden">
+
+             {/* 1. Drop Zones (Top Part - scrollable) */}
+             <div ref={dropZonesRef} className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 p-3">
                 
                 {/* Rows */}
                 <DroppableContainer 
