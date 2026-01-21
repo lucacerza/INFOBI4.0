@@ -14,6 +14,7 @@
 5. [Sistema Permessi e Ruoli](#5-sistema-permessi-e-ruoli)
 6. [Row-Level Security (RLS)](#6-row-level-security-rls)
 7. [Priorità e Roadmap Suggerita](#7-priorità-e-roadmap-suggerita)
+8. [Conclusione](#8-conclusione)
 
 ---
 
@@ -241,7 +242,106 @@ CREATE TABLE calculated_columns (
 );
 ```
 
-### 1.6 Integrazione con Pivot
+### 1.6 Gestione Errori nelle Formule
+
+> **IMPORTANTE**: Il backend NON deve crashare (Internal Server Error) quando l'utente scrive una formula errata.
+
+#### Errori da Gestire
+
+| Tipo Errore | Esempio | Comportamento |
+|-------------|---------|---------------|
+| Sintassi invalida | `Venduto + + Costo` | Messaggio: "Errore di sintassi nella formula" |
+| Divisione per zero | `Margine / Quantita` (con Quantita=0) | Restituisce `NULL` o `Inf`, NON crash |
+| Campo inesistente | `VendutoXYZ - Costo` | Messaggio: "Campo 'VendutoXYZ' non trovato" |
+| Tipo incompatibile | `Nome + 10` (Nome è stringa) | Messaggio: "Impossibile sommare testo e numero" |
+| Funzione sconosciuta | `UNKNOWN(Venduto)` | Messaggio: "Funzione 'UNKNOWN' non supportata" |
+
+#### Implementazione Sicura
+
+```python
+# services/calculated_columns.py
+
+class CalculatedColumnError(Exception):
+    """Errore gestito per colonne calcolate."""
+    pass
+
+class CalculatedColumnEngine:
+
+    @staticmethod
+    def add_calculated_column_safe(
+        df: pl.DataFrame,
+        name: str,
+        expression: str
+    ) -> tuple[pl.DataFrame, Optional[str]]:
+        """
+        Aggiunge colonna calcolata con gestione errori.
+
+        Returns:
+            (DataFrame modificato, None) se successo
+            (DataFrame originale, messaggio errore) se fallimento
+        """
+        try:
+            # Valida sintassi prima di eseguire
+            CalculatedColumnEngine._validate_expression(expression, df.columns)
+
+            expr = CalculatedColumnEngine.parse_expression(expression, df)
+
+            # Gestisci divisione per zero con fill_nan
+            result = df.with_columns(
+                expr.fill_nan(None).fill_null(None).alias(name)
+            )
+            return result, None
+
+        except pl.exceptions.SchemaError as e:
+            return df, f"Errore tipo dati: {str(e)}"
+        except pl.exceptions.ColumnNotFoundError as e:
+            return df, f"Campo non trovato: {str(e)}"
+        except SyntaxError as e:
+            return df, f"Errore di sintassi: {str(e)}"
+        except ZeroDivisionError:
+            return df, "Divisione per zero nella formula"
+        except Exception as e:
+            # Log interno per debug, ma messaggio generico all'utente
+            logger.error(f"Errore colonna calcolata: {e}")
+            return df, "Errore nella formula. Verifica la sintassi."
+
+    @staticmethod
+    def _validate_expression(expression: str, available_columns: list[str]) -> None:
+        """
+        Valida espressione PRIMA di eseguirla.
+        Solleva CalculatedColumnError se invalida.
+        """
+        # Lista funzioni permesse (whitelist)
+        allowed_functions = {'ABS', 'ROUND', 'FLOOR', 'CEIL', 'SQRT', 'LOG',
+                           'UPPER', 'LOWER', 'LENGTH', 'YEAR', 'MONTH', 'DAY',
+                           'SUM', 'AVG', 'COUNT', 'MIN', 'MAX', 'IF', 'CASE'}
+
+        # Estrai nomi funzioni dall'espressione
+        import re
+        functions_used = set(re.findall(r'([A-Z_]+)\s*\(', expression))
+
+        unknown_functions = functions_used - allowed_functions
+        if unknown_functions:
+            raise CalculatedColumnError(
+                f"Funzioni non supportate: {', '.join(unknown_functions)}"
+            )
+```
+
+#### Response API in Caso di Errore
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "CALCULATED_COLUMN_ERROR",
+    "message": "Errore nella formula 'Margine%': Divisione per zero",
+    "field": "Margine%",
+    "expression": "(Venduto - Costo) / Costo * 100"
+  }
+}
+```
+
+### 1.7 Integrazione con Pivot
 
 Le colonne calcolate dovranno:
 - Apparire nella lista "All Columns" del BiGridConfig
@@ -984,30 +1084,50 @@ class RLSEngine:
         return filters
 
     @staticmethod
-    def apply_rls_to_query(base_query: str, rls_filters: Dict[str, List]) -> str:
+    def apply_rls_to_query(
+        base_query: str,
+        rls_filters: Dict[str, List]
+    ) -> tuple[str, Dict[str, Any]]:
         """
         Aggiunge clausole WHERE forzate alla query.
 
-        IMPORTANTE: Usa parameterized queries per sicurezza!
+        ⚠️ CRITICO - SICUREZZA SQL INJECTION:
+        DEVE usare SEMPRE bind parameters (:param_name) di SQLAlchemy.
+        MAI concatenazione di stringhe per i valori!
+
+        Returns:
+            (query_con_where, dizionario_parametri)
         """
         if not rls_filters:
-            return base_query
+            return base_query, {}
 
         conditions = []
+        params = {}
+
         for field, values in rls_filters.items():
-            # Sanitizza field name
+            # Sanitizza SOLO il nome campo (whitelist caratteri)
             safe_field = "".join(c for c in field if c.isalnum() or c == '_')
 
+            # ⚠️ I VALORI vanno SEMPRE come bind parameters, MAI inline!
             if len(values) == 1:
-                conditions.append(f"{safe_field} = :rls_{safe_field}")
+                param_name = f"rls_{safe_field}"
+                conditions.append(f"{safe_field} = :{param_name}")
+                params[param_name] = values[0]
             else:
-                placeholders = ", ".join([f":rls_{safe_field}_{i}" for i in range(len(values))])
-                conditions.append(f"{safe_field} IN ({placeholders})")
+                # Genera placeholder per ogni valore
+                placeholders = []
+                for i, val in enumerate(values):
+                    param_name = f"rls_{safe_field}_{i}"
+                    placeholders.append(f":{param_name}")
+                    params[param_name] = val
+                conditions.append(f"{safe_field} IN ({', '.join(placeholders)})")
 
         where_clause = " AND ".join(conditions)
 
         # Wrappa la query originale
-        return f"SELECT * FROM ({base_query}) AS _base WHERE {where_clause}"
+        secured_query = f"SELECT * FROM ({base_query}) AS _base WHERE {where_clause}"
+
+        return secured_query, params
 
 
 # Integrazione in query_engine.py
@@ -1025,11 +1145,42 @@ async def execute_query_with_rls(
     # 1. Recupera filtri RLS per l'utente
     rls_filters = await RLSEngine.get_user_filters(user_id, report_id)
 
-    # 2. Applica RLS alla query
-    secured_query = RLSEngine.apply_rls_to_query(query, rls_filters)
+    # 2. Applica RLS alla query (ritorna query + parametri)
+    secured_query, rls_params = RLSEngine.apply_rls_to_query(query, rls_filters)
 
-    # 3. Esegui query securizzata
-    return await QueryEngine.execute_query(db_type, config, secured_query, **kwargs)
+    # 3. Esegui query securizzata CON BIND PARAMETERS
+    # ⚠️ CRITICO: usa text() + params, MAI string format!
+    from sqlalchemy import text
+    return await QueryEngine.execute_query(
+        db_type,
+        config,
+        text(secured_query),
+        params=rls_params,  # <-- Parametri bind
+        **kwargs
+    )
+
+### 6.3 Avvertenze Sicurezza RLS
+
+> ⚠️ **ATTENZIONE - SQL INJECTION**
+>
+> L'implementazione RLS DEVE rispettare rigorosamente queste regole:
+>
+> 1. **MAI concatenare valori utente nelle query**
+>    ```python
+>    # ❌ SBAGLIATO - Vulnerabile a SQL Injection!
+>    query = f"SELECT * FROM t WHERE regione = '{user_region}'"
+>
+>    # ✅ CORRETTO - Usa bind parameters
+>    query = "SELECT * FROM t WHERE regione = :region"
+>    params = {"region": user_region}
+>    ```
+>
+> 2. **Nomi colonne**: whitelist di caratteri (solo `[a-zA-Z0-9_]`)
+>
+> 3. **Valori**: SEMPRE come `:param_name` di SQLAlchemy
+>
+> 4. **Test di sicurezza**: verificare che input come `'; DROP TABLE users; --`
+>    NON causino danni
 ```
 
 ### 6.3 Schema Database RLS
@@ -1054,7 +1205,7 @@ VALUES
     (1, 5, 'regione', 'Centro', 1);
 ```
 
-### 6.4 Stima Effort
+### 6.5 Stima Effort
 
 | Componente | Giorni |
 |------------|--------|
@@ -1187,6 +1338,42 @@ Punti chiave della revisione:
 3. ✅ Evidenziata vulnerabilità in `connections.py`
 4. ✅ Documentata limitazione RLS per pool condiviso
 5. ✅ Riordinata roadmap con sicurezza come priorità #1
+
+---
+
+## 8. Conclusione
+
+Questo documento rappresenta la roadmap tecnica per l'evoluzione di INFOBI 4.0 verso un prodotto BI completo e competitivo.
+
+### Punti Chiave da Ricordare
+
+1. **Sicurezza Prima di Tutto**: Il sistema permessi SUPERUSER/ADMIN/USER è un prerequisito non negoziabile. Nessuna nuova funzionalità deve essere rilasciata senza aver prima sistemato le vulnerabilità esistenti in `connections.py`.
+
+2. **Architettura Esistente**: Rispettare sempre lo stack tecnologico già in uso:
+   - **Polars** per data processing (NON Pandas)
+   - **ECharts** per visualizzazioni (NON Recharts)
+   - **Arrow IPC** per serializzazione
+   - **Dragonfly** per cache
+
+3. **Robustezza**: Ogni funzionalità deve gestire gracefully i casi di errore:
+   - Formule malformate → messaggio utente, NON crash
+   - Divisione per zero → `NULL` o `Inf`, NON exception
+   - Campi inesistenti → messaggio chiaro
+
+4. **Sicurezza SQL**: Nella RLS e ovunque si costruiscano query dinamiche:
+   - **SEMPRE** bind parameters (`:param_name`)
+   - **MAI** concatenazione stringhe con valori utente
+   - **SEMPRE** whitelist per nomi colonne
+
+### Prossimi Passi Immediati
+
+```
+1. [ ] Implementare gerarchia permessi (URGENTE)
+2. [ ] Proteggere endpoint connections.py e reports.py
+3. [ ] Migrare admin → infostudio (superuser)
+4. [ ] Setup ECharts per grafici
+5. [ ] Implementare colonne calcolate con Polars
+```
 
 ---
 
