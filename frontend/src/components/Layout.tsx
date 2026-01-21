@@ -11,19 +11,25 @@ import {
   Users
 } from 'lucide-react';
 
+/**
+ * Menu di navigazione con controllo accessi per ruolo:
+ * - superuser: Vede tutto (Connessioni, Report, Dashboard, Utenti)
+ * - admin: Vede Dashboard, Utenti
+ * - user: Vede solo Dashboard (assegnate)
+ */
 const navItems = [
-  { path: '/reports', label: 'Report', icon: FileText },
-  { path: '/dashboards', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/connections', label: 'Connessioni', icon: Database, adminOnly: true },
-  { path: '/users', label: 'Utenti', icon: Users, adminOnly: true },
+  { path: '/connections', label: 'Connessioni', icon: Database, roles: ['superuser'] },
+  { path: '/reports', label: 'Report', icon: FileText, roles: ['superuser'] },
+  { path: '/dashboards', label: 'Dashboard', icon: LayoutDashboard, roles: ['superuser', 'admin', 'user'] },
+  { path: '/users', label: 'Utenti', icon: Users, roles: ['superuser', 'admin'] },
 ];
 
 export default function Layout() {
   const { user, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   
-  const isAdmin = user?.role === 'admin';
-  const filteredNav = navItems.filter(item => !item.adminOnly || isAdmin);
+  const userRole = user?.role || 'user';
+  const filteredNav = navItems.filter(item => item.roles.includes(userRole));
   
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);

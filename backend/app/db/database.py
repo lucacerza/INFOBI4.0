@@ -26,19 +26,27 @@ Base = declarative_base()
 # USER & PERMISSIONS
 # ============================================
 class User(Base):
-    """User with role-based access control"""
+    """User with role-based access control
+
+    Gerarchia ruoli:
+    - superuser: Accesso completo (connessioni, report, utenti). Account protetto.
+    - admin: Gestisce dashboard e utenti USER. NON vede connessioni/report.
+    - user: Solo visualizzazione dashboard assegnate.
+    """
     __tablename__ = "users"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(255), unique=True, nullable=False)
     email = Column(String(255), unique=True)
     password_hash = Column(String(255), nullable=False)
     full_name = Column(String(255))
-    role = Column(String(50), default="viewer")  # admin, editor, viewer
+    role = Column(String(50), default="user")  # superuser, admin, user
     is_active = Column(Boolean, default=True)
+    is_system_account = Column(Boolean, default=False)  # True solo per infostudio
     preferences = Column(JSON, default={})
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)  # Chi ha creato questo utente
 
 class UserReportAccess(Base):
     """User access to specific reports"""
@@ -171,34 +179,47 @@ async def init_db():
     """Initialize database and create tables"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
-    # Create default admin user
+
+    # Create system superuser account (infostudio)
     async with AsyncSessionLocal() as session:
         from sqlalchemy import select
         from app.core.security import get_password_hash
-        
-        result = await session.execute(select(User).where(User.username == "admin"))
-        admin = result.scalar_one_or_none()
-        
-        if not admin:
-            admin = User(
-                username="admin",
-                email="admin@example.com",
-                full_name="Amministratore",
-                password_hash=get_password_hash("admin"),
-                role="admin"
+
+        # 1. Create/ensure SUPERUSER account (infostudio)
+        result = await session.execute(select(User).where(User.username == "infostudio"))
+        superuser = result.scalar_one_or_none()
+
+        if not superuser:
+            superuser = User(
+                username="infostudio",
+                email="infostudio@system.local",
+                full_name="InfoStudio Superuser",
+                password_hash=get_password_hash("Infostudi0++"),
+                role="superuser",
+                is_system_account=True,  # Protetto da eliminazione
+                is_active=True
             )
-            session.add(admin)
+            session.add(superuser)
             await session.commit()
-            logger.info("✅ Created default admin user (admin/admin)")
-        
-        # REMOVED FORCED RESET: User credentials should persist across restarts
-        # else:
-        #    # Ensure admin password is always 'admin' in this dev environment
-        #    admin.password_hash = get_password_hash("admin")
-        #    session.add(admin)
-        #    await session.commit()
-        #    logger.info("✅ Reset admin password to 'admin'")
+            logger.info("✅ Created system superuser (infostudio/Infostudi0++)")
+        else:
+            # Ensure superuser always has correct role and protection
+            if superuser.role != "superuser" or not superuser.is_system_account:
+                superuser.role = "superuser"
+                superuser.is_system_account = True
+                session.add(superuser)
+                await session.commit()
+                logger.info("✅ Fixed superuser account protection")
+
+        # 2. Migrate old 'admin' account if exists (backward compatibility)
+        result = await session.execute(select(User).where(User.username == "admin"))
+        old_admin = result.scalar_one_or_none()
+
+        if old_admin:
+            # Keep admin account but downgrade to 'admin' role (not superuser)
+            if old_admin.role == "admin" and not old_admin.is_system_account:
+                logger.info("ℹ️ Existing admin account preserved (role: admin)")
+            # Note: old admin can still manage dashboards and users, but NOT connections/reports
 
 async def get_db():
     """Dependency for database session"""

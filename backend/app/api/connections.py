@@ -8,7 +8,7 @@ from sqlalchemy import select, text
 from typing import List
 from pydantic import BaseModel
 from app.db.database import get_db, Connection
-from app.core.deps import get_current_user, get_current_admin
+from app.core.deps import get_current_user, get_current_admin, get_current_superuser
 from app.core.security import encrypt_password, decrypt_password
 from app.models.schemas import ConnectionCreate, ConnectionUpdate, ConnectionResponse
 from app.services.query_engine import QueryEngine
@@ -74,9 +74,9 @@ def _format_connection_error(e: Exception, host: str, database: str) -> str:
 @router.post("/test-new")
 async def test_new_connection(
     request: TestConnectionRequest,
-    user = Depends(get_current_user)
+    user = Depends(get_current_superuser)  # SECURITY: Solo superuser può testare nuove connessioni
 ):
-    """Test a connection BEFORE saving it (with automatic warm-up)"""
+    """Test a connection BEFORE saving it (SUPERUSER ONLY, with automatic warm-up)"""
     try:
         config = {
             "host": request.host,
@@ -134,9 +134,9 @@ async def test_new_connection(
 @router.get("", response_model=List[ConnectionResponse])
 async def list_connections(
     db: AsyncSession = Depends(get_db),
-    user = Depends(get_current_user)
+    user = Depends(get_current_superuser)  # SECURITY: Solo superuser può vedere le connessioni
 ):
-    """List all database connections"""
+    """List all database connections (SUPERUSER ONLY)"""
     result = await db.execute(select(Connection).order_by(Connection.name))
     return result.scalars().all()
 
@@ -144,9 +144,9 @@ async def list_connections(
 async def create_connection(
     data: ConnectionCreate,
     db: AsyncSession = Depends(get_db),
-    user = Depends(get_current_admin)
+    user = Depends(get_current_superuser)  # SECURITY: Solo superuser può creare connessioni
 ):
-    """Create a new database connection (with automatic warm-up)"""
+    """Create a new database connection (SUPERUSER ONLY, with automatic warm-up)"""
     conn = Connection(
         name=data.name,
         db_type=data.db_type,
@@ -181,9 +181,9 @@ async def create_connection(
 async def get_connection(
     conn_id: int,
     db: AsyncSession = Depends(get_db),
-    user = Depends(get_current_user)
+    user = Depends(get_current_superuser)  # SECURITY: Solo superuser può vedere i dettagli
 ):
-    """Get connection details"""
+    """Get connection details (SUPERUSER ONLY)"""
     result = await db.execute(select(Connection).where(Connection.id == conn_id))
     conn = result.scalar_one_or_none()
     if not conn:
@@ -195,9 +195,9 @@ async def update_connection(
     conn_id: int,
     data: ConnectionUpdate,
     db: AsyncSession = Depends(get_db),
-    user = Depends(get_current_admin)
+    user = Depends(get_current_superuser)  # SECURITY: Solo superuser può modificare connessioni
 ):
-    """Update connection (with automatic re-warm-up)"""
+    """Update connection (SUPERUSER ONLY, with automatic re-warm-up)"""
     result = await db.execute(select(Connection).where(Connection.id == conn_id))
     conn = result.scalar_one_or_none()
     if not conn:
@@ -233,9 +233,9 @@ async def update_connection(
 async def delete_connection(
     conn_id: int,
     db: AsyncSession = Depends(get_db),
-    user = Depends(get_current_admin)
+    user = Depends(get_current_superuser)  # SECURITY: Solo superuser può eliminare connessioni
 ):
-    """Delete connection"""
+    """Delete connection (SUPERUSER ONLY)"""
     result = await db.execute(select(Connection).where(Connection.id == conn_id))
     conn = result.scalar_one_or_none()
     if not conn:
@@ -248,9 +248,9 @@ async def delete_connection(
 async def test_connection(
     conn_id: int,
     db: AsyncSession = Depends(get_db),
-    user = Depends(get_current_user)
+    user = Depends(get_current_superuser)  # SECURITY: Solo superuser può testare connessioni
 ):
-    """Test database connection"""
+    """Test database connection (SUPERUSER ONLY)"""
     result = await db.execute(select(Connection).where(Connection.id == conn_id))
     conn = result.scalar_one_or_none()
     if not conn:
@@ -288,7 +288,7 @@ async def test_connection(
 
 @router.post("/warmup-all")
 async def warmup_all_connections(
-    user = Depends(get_current_admin)
+    user = Depends(get_current_superuser)  # SECURITY: Solo superuser può avviare warmup
 ):
     """
     Manually trigger warm-up of ALL connections used by reports.
@@ -315,7 +315,7 @@ async def warmup_all_connections(
 
 @router.get("/pool-status")
 async def get_pool_status(
-    user = Depends(get_current_admin)
+    user = Depends(get_current_superuser)  # SECURITY: Solo superuser può vedere lo stato pool
 ):
     """
     Get status of all connection pools.

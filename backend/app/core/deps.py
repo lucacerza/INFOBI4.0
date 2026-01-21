@@ -41,17 +41,49 @@ async def get_current_user(
     
     return user
 
+async def get_current_superuser(user: User = Depends(get_current_user)) -> User:
+    """
+    Require SUPERUSER role.
+
+    Solo superuser può:
+    - Gestire connessioni database
+    - Gestire report/query
+    - Gestire tutti gli utenti (inclusi admin)
+    """
+    if user.role != "superuser":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Superuser access required"
+        )
+    return user
+
+
 async def get_current_admin(user: User = Depends(get_current_user)) -> User:
-    """Require admin role"""
-    if user.role != "admin":
+    """
+    Require ADMIN role or higher.
+
+    Admin può:
+    - Creare/gestire dashboard
+    - Gestire utenti con ruolo USER
+    - NON può vedere/gestire connessioni o report
+    """
+    if user.role not in ("admin", "superuser"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required"
         )
     return user
 
-# Alias for clarity
+
+async def get_current_admin_or_superuser(user: User = Depends(get_current_user)) -> User:
+    """Alias for get_current_admin (accepts both admin and superuser)"""
+    return await get_current_admin(user)
+
+
+# Aliases for clarity
+require_superuser = get_current_superuser
 require_admin = get_current_admin
+
 
 def require_role(*roles: str):
     """Factory for role-based access"""

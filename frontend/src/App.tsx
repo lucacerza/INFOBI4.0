@@ -31,14 +31,36 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function AdminRoute({ children }: { children: React.ReactNode }) {
+/**
+ * Route protetta per ruoli specifici
+ * @param roles - Array di ruoli ammessi (es. ['superuser', 'admin'])
+ * @param fallback - Route di fallback se non autorizzato (default: /dashboards)
+ */
+function RoleRoute({
+  children,
+  roles,
+  fallback = '/dashboards'
+}: {
+  children: React.ReactNode;
+  roles: string[];
+  fallback?: string;
+}) {
   const { user } = useAuthStore();
-  
-  if (user?.role !== 'admin') {
-    return <Navigate to="/reports" replace />;
+
+  if (!user?.role || !roles.includes(user.role)) {
+    return <Navigate to={fallback} replace />;
   }
-  
+
   return <>{children}</>;
+}
+
+// Alias per retrocompatibilità
+function SuperuserRoute({ children }: { children: React.ReactNode }) {
+  return <RoleRoute roles={['superuser']}>{children}</RoleRoute>;
+}
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  return <RoleRoute roles={['superuser', 'admin']}>{children}</RoleRoute>;
 }
 
 function App() {
@@ -69,15 +91,24 @@ function App() {
             <Layout />
           </ProtectedRoute>
         }>
-          <Route index element={<Navigate to="/reports" replace />} />
-          <Route path="reports" element={<ReportsPage />} />
+          {/* Default: redirect to dashboards (accessible by all) */}
+          <Route index element={<Navigate to="/dashboards" replace />} />
+
+          {/* SUPERUSER ONLY: Connections and Reports management */}
+          <Route path="connections" element={<SuperuserRoute><ConnectionsPage /></SuperuserRoute>} />
+          <Route path="reports" element={<SuperuserRoute><ReportsPage /></SuperuserRoute>} />
+          <Route path="reports/new" element={<SuperuserRoute><ReportEditorPage /></SuperuserRoute>} />
+          <Route path="reports/:id/edit" element={<SuperuserRoute><ReportEditorPage /></SuperuserRoute>} />
+
+          {/* Report viewing - accessible if user has access (checked by backend) */}
           <Route path="reports/:id" element={<ReportViewerPage />} />
           <Route path="reports/:id/pivot" element={<ReportPivotPage />} />
-          <Route path="reports/:id/edit" element={<ReportEditorPage />} />
-          <Route path="reports/new" element={<ReportEditorPage />} />
-          <Route path="connections" element={<ConnectionsPage />} />
+
+          {/* Dashboards - accessible by all roles */}
           <Route path="dashboards" element={<DashboardsPage />} />
           <Route path="dashboards/:id" element={<DashboardViewerPage />} />
+
+          {/* Users management - admin and superuser */}
           <Route path="users" element={<AdminRoute><UsersPage /></AdminRoute>} />
         </Route>
       </Routes>

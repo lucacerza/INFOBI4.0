@@ -1,9 +1,14 @@
 """
 Users API - User Management and Permissions
 
+GERARCHIA RUOLI:
+- SUPERUSER: Gestisce TUTTI gli utenti (inclusi admin). Account protetto.
+- ADMIN: Gestisce solo utenti con ruolo USER. NON può creare/modificare admin o superuser.
+- USER: Nessun accesso alla gestione utenti.
+
 Endpoints:
-- GET /users - List all users (admin only)
-- POST /users - Create user (admin only)
+- GET /users - List users (admin: solo user, superuser: tutti)
+- POST /users - Create user (admin: solo user, superuser: tutti)
 - GET /users/{id} - Get user details
 - PUT /users/{id} - Update user
 - DELETE /users/{id} - Delete user
@@ -17,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from pydantic import BaseModel, EmailStr
 from app.db.database import get_db, User, UserReportAccess, UserDashboardAccess, Report, Dashboard
-from app.core.deps import get_current_user, require_admin
+from app.core.deps import get_current_user, get_current_admin, get_current_superuser
 from app.core.security import get_password_hash
 
 logger = logging.getLogger(__name__)
@@ -31,7 +36,7 @@ class UserCreate(BaseModel):
     email: Optional[str] = None
     password: str
     full_name: Optional[str] = None
-    role: str = "viewer"  # admin, editor, viewer
+    role: str = "user"  # superuser, admin, user
 
 class UserUpdate(BaseModel):
     email: Optional[str] = None
@@ -69,10 +74,23 @@ class AssignDashboardsRequest(BaseModel):
 @router.get("", response_model=List[UserResponse])
 async def list_users(
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(get_current_admin)
 ):
-    """List all users (admin only)"""
-    result = await db.execute(select(User).order_by(User.username))
+    """
+    List users based on role:
+    - SUPERUSER: vede tutti gli utenti
+    - ADMIN: vede solo utenti con ruolo 'user'
+    """
+    if current_user.role == "superuser":
+        # Superuser vede tutti
+        result = await db.execute(select(User).order_by(User.username))
+    else:
+        # Admin vede solo utenti con ruolo 'user'
+        result = await db.execute(
+            select(User)
+            .where(User.role == "user")
+            .order_by(User.username)
+        )
     users = result.scalars().all()
     return users
 
@@ -80,9 +98,13 @@ async def list_users(
 async def create_user(
     user_data: UserCreate,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(get_current_admin)
 ):
-    """Create a new user (admin only)"""
+    """
+    Create a new user:
+    - SUPERUSER: può creare utenti di qualsiasi ruolo
+    - ADMIN: può creare solo utenti con ruolo 'user'
+    """
     # Check if username exists
     result = await db.execute(select(User).where(User.username == user_data.username))
     if result.scalar_one_or_none():
@@ -90,7 +112,7 @@ async def create_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username già esistente"
         )
-    
+
     # Check if email exists (if provided)
     if user_data.email:
         result = await db.execute(select(User).where(User.email == user_data.email))
@@ -99,41 +121,57 @@ async def create_user(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email già esistente"
             )
-    
+
     # Validate role
-    if user_data.role not in ["admin", "editor", "viewer"]:
+    valid_roles = ["superuser", "admin", "user"]
+    if user_data.role not in valid_roles:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ruolo non valido. Usa: admin, editor, viewer"
+            detail=f"Ruolo non valido. Usa: {', '.join(valid_roles)}"
         )
-    
+
+    # SECURITY: Admin può creare solo utenti 'user'
+    if current_user.role == "admin" and user_data.role != "user":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Gli admin possono creare solo utenti con ruolo 'user'"
+        )
+
     user = User(
         username=user_data.username,
         email=user_data.email,
         full_name=user_data.full_name,
         password_hash=get_password_hash(user_data.password),
-        role=user_data.role
+        role=user_data.role,
+        created_by=current_user.id
     )
-    
+
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    
-    logger.info(f"Created user: {user.username} with role {user.role}")
+
+    logger.info(f"Created user: {user.username} with role {user.role} by {current_user.username}")
     return user
 
 @router.get("/{user_id}", response_model=UserWithAccess)
 async def get_user(
     user_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(get_current_admin)
 ):
     """Get user details with assigned reports/dashboards"""
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="Utente non trovato")
+
+    # SECURITY: Admin può vedere solo utenti 'user'
+    if current_user.role == "admin" and user.role != "user":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Non hai i permessi per vedere questo utente"
+        )
     
     # Get assigned reports
     result = await db.execute(
@@ -165,59 +203,98 @@ async def update_user(
     user_id: int,
     user_data: UserUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(get_current_admin)
 ):
-    """Update user details"""
+    """
+    Update user details:
+    - SUPERUSER: può modificare tutti (tranne account di sistema)
+    - ADMIN: può modificare solo utenti 'user'
+    """
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="Utente non trovato")
-    
-    # Don't allow modifying the main admin
-    if user.username == "admin" and current_user.username != "admin":
+
+    # SECURITY: Account di sistema (infostudio) non può essere modificato
+    if user.is_system_account:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Non puoi modificare l'utente admin principale"
+            detail="L'account di sistema non può essere modificato"
         )
-    
+
+    # SECURITY: Admin può modificare solo utenti 'user'
+    if current_user.role == "admin" and user.role != "user":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Non hai i permessi per modificare questo utente"
+        )
+
     if user_data.email is not None:
         user.email = user_data.email
     if user_data.full_name is not None:
         user.full_name = user_data.full_name
     if user_data.role is not None:
-        if user_data.role not in ["admin", "editor", "viewer"]:
-            raise HTTPException(status_code=400, detail="Ruolo non valido")
+        valid_roles = ["superuser", "admin", "user"]
+        if user_data.role not in valid_roles:
+            raise HTTPException(status_code=400, detail=f"Ruolo non valido. Usa: {', '.join(valid_roles)}")
+        # SECURITY: Admin non può promuovere a ruoli superiori
+        if current_user.role == "admin" and user_data.role != "user":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Gli admin possono assegnare solo il ruolo 'user'"
+            )
         user.role = user_data.role
     if user_data.is_active is not None:
         user.is_active = user_data.is_active
     if user_data.password:
         user.password_hash = get_password_hash(user_data.password)
-    
+
     await db.commit()
     await db.refresh(user)
-    
+
+    logger.info(f"Updated user: {user.username} by {current_user.username}")
     return user
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(
     user_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(get_current_admin)
 ):
-    """Delete a user"""
+    """
+    Delete a user:
+    - SUPERUSER: può eliminare tutti (tranne account di sistema)
+    - ADMIN: può eliminare solo utenti 'user'
+    """
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
-    
+
     if not user:
         raise HTTPException(status_code=404, detail="Utente non trovato")
-    
-    if user.username == "admin":
+
+    # SECURITY: Account di sistema (infostudio) non può essere eliminato
+    if user.is_system_account:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Non puoi eliminare l'utente admin"
+            detail="L'account di sistema non può essere eliminato"
         )
-    
+
+    # SECURITY: Admin può eliminare solo utenti 'user'
+    if current_user.role == "admin" and user.role != "user":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Non hai i permessi per eliminare questo utente"
+        )
+
+    # Prevent self-deletion
+    if user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Non puoi eliminare il tuo stesso account"
+        )
+
+    logger.info(f"Deleted user: {user.username} by {current_user.username}")
     await db.delete(user)
     await db.commit()
 
@@ -226,7 +303,7 @@ async def assign_reports(
     user_id: int,
     request: AssignReportsRequest,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(get_current_admin)
 ):
     """Assign reports to a user"""
     # Verify user exists
@@ -263,7 +340,7 @@ async def assign_dashboards(
     user_id: int,
     request: AssignDashboardsRequest,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_admin)
+    current_user = Depends(get_current_admin)
 ):
     """Assign dashboards to a user"""
     # Verify user exists
@@ -301,25 +378,25 @@ async def get_my_reports(
     current_user = Depends(get_current_user)
 ):
     """Get reports accessible to current user"""
-    if current_user.role == "admin":
-        # Admin sees all
+    if current_user.role == "superuser":
+        # Superuser sees all reports
         result = await db.execute(select(Report).order_by(Report.name))
         reports = result.scalars().all()
     else:
-        # Others see only assigned + public
+        # Admin and user see only assigned + public
         result = await db.execute(
             select(Report)
-            .outerjoin(UserReportAccess, 
-                (UserReportAccess.report_id == Report.id) & 
+            .outerjoin(UserReportAccess,
+                (UserReportAccess.report_id == Report.id) &
                 (UserReportAccess.user_id == current_user.id))
             .where(
-                (Report.visibility == "public") | 
+                (Report.visibility == "public") |
                 (UserReportAccess.user_id == current_user.id)
             )
             .order_by(Report.name)
         )
         reports = result.scalars().all()
-    
+
     return [
         {
             "id": r.id,
@@ -335,10 +412,12 @@ async def get_my_dashboards(
     current_user = Depends(get_current_user)
 ):
     """Get dashboards accessible to current user"""
-    if current_user.role == "admin":
+    if current_user.role in ("superuser", "admin"):
+        # Superuser e admin vedono tutte le dashboard
         result = await db.execute(select(Dashboard).order_by(Dashboard.name))
         dashboards = result.scalars().all()
     else:
+        # User vede solo dashboard assegnate o pubbliche
         result = await db.execute(
             select(Dashboard)
             .outerjoin(UserDashboardAccess,
@@ -351,7 +430,7 @@ async def get_my_dashboards(
             .order_by(Dashboard.name)
         )
         dashboards = result.scalars().all()
-    
+
     return [
         {
             "id": d.id,

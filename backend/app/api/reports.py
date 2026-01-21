@@ -7,7 +7,7 @@ from sqlalchemy import select
 from typing import List
 from pydantic import BaseModel
 from app.db.database import get_db, Report, Connection
-from app.core.deps import get_current_user, get_current_admin
+from app.core.deps import get_current_user, get_current_admin, get_current_superuser
 from app.core.security import decrypt_password
 from app.models.schemas import ReportCreate, ReportUpdate, ReportResponse, GridRequest, PivotDrillRequest
 from app.services.query_engine import QueryEngine, query_engine
@@ -25,9 +25,9 @@ class TestQueryRequest(BaseModel):
 async def test_query(
     request: TestQueryRequest,
     db: AsyncSession = Depends(get_db),
-    user = Depends(get_current_user)
+    user = Depends(get_current_superuser)  # SECURITY: Solo superuser può testare query
 ):
-    """Test a SQL query and return column info and row count"""
+    """Test a SQL query and return column info and row count (SUPERUSER ONLY)"""
     # Get connection
     result = await db.execute(select(Connection).where(Connection.id == request.connection_id))
     connection = result.scalar_one_or_none()
@@ -70,9 +70,9 @@ async def test_query(
 @router.get("", response_model=List[ReportResponse])
 async def list_reports(
     db: AsyncSession = Depends(get_db),
-    user = Depends(get_current_user)
+    user = Depends(get_current_superuser)  # SECURITY: Solo superuser può vedere la lista report
 ):
-    """List all reports"""
+    """List all reports (SUPERUSER ONLY)"""
     result = await db.execute(select(Report).order_by(Report.name))
     return result.scalars().all()
 
@@ -80,9 +80,9 @@ async def list_reports(
 async def create_report(
     data: ReportCreate,
     db: AsyncSession = Depends(get_db),
-    user = Depends(get_current_admin)
+    user = Depends(get_current_superuser)  # SECURITY: Solo superuser può creare report
 ):
-    """Create a new report"""
+    """Create a new report (SUPERUSER ONLY)"""
     # Verify connection exists
     conn_result = await db.execute(select(Connection).where(Connection.id == data.connection_id))
     if not conn_result.scalar_one_or_none():
@@ -124,9 +124,9 @@ async def update_report(
     report_id: int,
     data: ReportUpdate,
     db: AsyncSession = Depends(get_db),
-    user = Depends(get_current_admin)
+    user = Depends(get_current_superuser)  # SECURITY: Solo superuser può modificare report
 ):
-    """Update report"""
+    """Update report (SUPERUSER ONLY)"""
     result = await db.execute(select(Report).where(Report.id == report_id))
     report = result.scalar_one_or_none()
     if not report:
@@ -152,9 +152,9 @@ async def update_report(
 async def delete_report(
     report_id: int,
     db: AsyncSession = Depends(get_db),
-    user = Depends(get_current_admin)
+    user = Depends(get_current_superuser)  # SECURITY: Solo superuser può eliminare report
 ):
-    """Delete report"""
+    """Delete report (SUPERUSER ONLY)"""
     result = await db.execute(select(Report).where(Report.id == report_id))
     report = result.scalar_one_or_none()
     if not report:
