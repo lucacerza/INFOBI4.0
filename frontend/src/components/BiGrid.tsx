@@ -425,6 +425,9 @@ export default function BiGrid({
   defaultGroupBy = [],
   defaultSplitBy = [],
   defaultMetrics = [],
+  /* STARTED NEW FEATURE: OrderBy/FilterBy */
+  defaultSort = [],
+  /* END NEW FEATURE */
   onConfigChange,
   previewMode = false
 }: BiGridProps) {

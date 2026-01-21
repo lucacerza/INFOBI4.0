@@ -85,6 +85,33 @@ const getFieldFromId = (id: string | null) => {
     return id;
 };
 
+// Helper to check if a field type is numeric
+const isNumericType = (type: string | undefined) => {
+    if (!type) return true; // Default to numeric if unknown
+    const t = type.toLowerCase();
+    return t === 'number' || t === 'float' || t === 'integer' || t === 'decimal' || t === 'int' || t === 'bigint' || t === 'smallint' || t === 'real' || t === 'money';
+};
+
+// Get valid aggregations for a field type
+const getValidAggregations = (fieldType: string | undefined) => {
+    if (isNumericType(fieldType)) {
+        return [
+            { value: 'sum', label: 'SUM' },
+            { value: 'avg', label: 'AVG' },
+            { value: 'count', label: 'COUNT' },
+            { value: 'min', label: 'MIN' },
+            { value: 'max', label: 'MAX' }
+        ];
+    } else {
+        // Text/Date fields: only COUNT, MIN, MAX
+        return [
+            { value: 'count', label: 'COUNT' },
+            { value: 'min', label: 'MIN' },
+            { value: 'max', label: 'MAX' }
+        ];
+    }
+};
+
 function SortableItem({
     id,
     children,
@@ -100,7 +127,9 @@ function SortableItem({
     /* END NEW FEATURE */
     // Having props
     onHavingChange,
-    havingValue
+    havingValue,
+    // Field type for aggregation filtering
+    fieldType
 }: any) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
     
@@ -200,17 +229,15 @@ function SortableItem({
                 <div className="flex items-center gap-1 pl-5">
                     <select
                         title="Aggregazione"
-                        value={havingValue?.aggregation || 'sum'}
+                        value={havingValue?.aggregation || (isNumericType(fieldType) ? 'sum' : 'count')}
                         onChange={(e) => { e.stopPropagation(); onHavingChange('aggregation', e.target.value); }}
                         className="bg-[#2b2b2b] text-[10px] text-white border border-gray-600 rounded px-1 flex-shrink-0"
                         onClick={(e) => e.stopPropagation()}
                         onPointerDown={(e) => e.stopPropagation()}
                     >
-                        <option value="sum">SUM</option>
-                        <option value="avg">AVG</option>
-                        <option value="count">COUNT</option>
-                        <option value="min">MIN</option>
-                        <option value="max">MAX</option>
+                        {getValidAggregations(fieldType).map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
                     </select>
                     <select
                         title="Tipo di confronto"
@@ -257,17 +284,17 @@ function SortableItem({
             <div className="flex items-center gap-1">
                 {onAggregationChange && (
                     <select
-                        value={aggregation || 'sum'}
+                        value={aggregation || (isNumericType(fieldType) ? 'sum' : 'count')}
                         onChange={(e) => { e.stopPropagation(); onAggregationChange(e.target.value); }}
                         onClick={(e) => e.stopPropagation()}
                         onPointerDown={(e) => e.stopPropagation()}
                         className="text-[10px] px-1 py-0.5 border border-[#555] rounded bg-[#2b2b2b] text-gray-300 focus:outline-none focus:border-blue-500"
                     >
-                        <option value="sum">sum</option>
-                        <option value="avg">avg</option>
-                        <option value="count">cnt</option>
-                        <option value="min">min</option>
-                        <option value="max">max</option>
+                        {getValidAggregations(fieldType).map(opt => (
+                            <option key={opt.value} value={opt.value}>
+                                {opt.value === 'count' ? 'cnt' : opt.value}
+                            </option>
+                        ))}
                     </select>
                 )}
 
@@ -312,7 +339,9 @@ function DroppableContainer({
     /* END NEW FEATURE */
     // Having props
     onHavingChange,
-    havingMeta
+    havingMeta,
+    // Column types for aggregation filtering
+    columnTypes
 }: any) {
     const { setNodeRef } = useDroppable({ id });
 
@@ -338,6 +367,9 @@ function DroppableContainer({
         // For having, use the full itemId as key (includes timestamp for uniqueness)
         const havingVal = havingMeta ? havingMeta[itemId] : null;
 
+        // Get field type for aggregation filtering
+        const fieldType = columnTypes ? columnTypes[realField] : undefined;
+
         return (
             <SortableItem
                 key={itemId}
@@ -355,6 +387,8 @@ function DroppableContainer({
                 // For having, pass itemId to onHavingChange so we update the correct entry
                 onHavingChange={onHavingChange ? (key: string, val: any) => onHavingChange(itemId, key, val) : null}
                 havingValue={havingVal}
+                // Field type for aggregation filtering
+                fieldType={fieldType}
             >
                {itemId}
             </SortableItem>
@@ -510,6 +544,18 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
     
     const available = colNames.filter((c: string) => !used.has(c));
     
+    // Parse Having from config
+    const currentHaving = config.having || [];
+    const havingByIds = currentHaving.map((h, idx) => `having:${h.field}:${Date.now() + idx}`);
+
+    // Initialize havingMeta
+    const newHavingMeta: Record<string, { aggregation: string, type: string, value: any }> = {};
+    currentHaving.forEach((h, idx) => {
+        const havingId = havingByIds[idx];
+        newHavingMeta[havingId] = { aggregation: h.aggregation, type: h.type, value: h.value };
+    });
+    setHavingMeta(prev => ({ ...prev, ...newHavingMeta }));
+
     setItems({
         available,
         rows: currentRows,
@@ -517,8 +563,9 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
         values: valueIds,
         /* STARTED NEW FEATURE: OrderBy/FilterBy - Set State */
         orderBy: orderByIds,
-        filterBy: filterByIds
+        filterBy: filterByIds,
         /* END NEW FEATURE */
+        havingBy: havingByIds
     });
   }, [availableColumns]); // Breaking dependency loops
 
@@ -810,7 +857,7 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
           }
 
           // Checks for special list
-          const isSpecial = (k: string) => k === 'orderBy' || k === 'filterBy' || k === 'havingBy';
+          const isSpecial = (k: string | null) => k === 'orderBy' || k === 'filterBy' || k === 'havingBy';
           const isSpecialStart = isSpecial(startContainer);
 
           // Initialize sortMeta/filterMeta/havingMeta for new field BEFORE setItems
@@ -827,9 +874,12 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
           }
           // For havingBy: initialize with unique ID as key
           if (overContainer === 'havingBy') {
+              // Determine default aggregation based on field type
+              const fieldType = columnTypes[activeField];
+              const defaultAgg = isNumericType(fieldType) ? 'sum' : 'count';
               setHavingMeta((prev: Record<string, { aggregation: string, type: string, value: any }>) => ({
                   ...prev,
-                  [newId]: { aggregation: 'sum', type: 'greaterThan', value: '' }
+                  [newId]: { aggregation: defaultAgg, type: 'greaterThan', value: '' }
               }));
               // Auto-scroll to bottom of drop zones to show new having
               setTimeout(() => {
@@ -983,7 +1033,7 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
                 />
     
                 {/* Values */}
-                <DroppableContainer 
+                <DroppableContainer
                     id="values"
                     title="Columns"
                     items={items.values}
@@ -992,6 +1042,7 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
                     onAggregationChange={handleAggregationChange}
                     hasGroups={items.rows.length > 0}
                     placeholder=""
+                    columnTypes={columnTypes}
                 />
 
                 {/* STARTED NEW FEATURE: OrderBy/FilterBy - New Containers */}
@@ -1023,6 +1074,7 @@ export default function BiGridConfig({ config, availableColumns, onChange }: BiG
                     onHavingChange={handleHavingChange}
                     havingMeta={havingMeta}
                     placeholder=""
+                    columnTypes={columnTypes}
                 />
                 {/* END NEW FEATURE */
                 }

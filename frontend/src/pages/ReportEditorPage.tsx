@@ -35,6 +35,7 @@ interface PivotConfig {
   orderBy?: { field: string; direction: 'asc' | 'desc' }[];
   filters?: { field: string; type: string; value: any }[];
   /* END NEW FEATURE */
+  having?: { field: string; aggregation: string; type: string; value: any }[];
 }
 
 export default function ReportEditorPage() {
