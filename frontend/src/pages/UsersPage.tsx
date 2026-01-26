@@ -1,15 +1,22 @@
 /**
  * UsersPage - Admin User Management
- * 
+ *
  * Features:
  * - Create/Edit/Delete users
  * - Assign reports and dashboards
- * - Role management (admin, editor, viewer)
+ * - Role management (superuser, admin, user)
+ *
+ * Regole di sicurezza:
+ * - infostudio (is_system_account=true) non può essere eliminato da nessuno
+ * - Nessun utente può eliminare se stesso
+ * - Admin può gestire solo utenti con ruolo 'user'
  */
 import { useState, useEffect } from 'react';
-import { 
-  Users, Plus, Edit, Trash2, Shield, Eye, FileText, 
-  LayoutDashboard, Search, X, Check, Loader2, UserPlus 
+import { useAuthStore } from '../stores/authStore';
+import {
+  Users, Plus, Edit, Trash2, Shield, Eye, FileText,
+  LayoutDashboard, Search, X, Check, Loader2, UserPlus,
+  ShieldAlert, ShieldCheck
 } from 'lucide-react';
 
 interface User {
@@ -17,8 +24,9 @@ interface User {
   username: string;
   email: string | null;
   full_name: string | null;
-  role: 'admin' | 'editor' | 'viewer';
+  role: 'superuser' | 'admin' | 'user';
   is_active: boolean;
+  is_system_account?: boolean;  // true per infostudio
   report_ids?: number[];
   dashboard_ids?: number[];
 }
@@ -36,11 +44,15 @@ interface Dashboard {
 const API_BASE = '/api';
 
 export default function UsersPage() {
+  const { user: currentUser } = useAuthStore();
   const [users, setUsers] = useState<User[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+
+  // Logica permessi
+  const isSuperuser = currentUser?.role === 'superuser';
   
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -54,7 +66,7 @@ export default function UsersPage() {
     email: '',
     full_name: '',
     password: '',
-    role: 'viewer' as 'admin' | 'editor' | 'viewer',
+    role: 'user' as 'superuser' | 'admin' | 'user',
     is_active: true
   });
   
@@ -94,7 +106,7 @@ export default function UsersPage() {
       email: '',
       full_name: '',
       password: '',
-      role: 'viewer',
+      role: 'user',
       is_active: true
     });
     setModalMode('create');
@@ -159,7 +171,14 @@ export default function UsersPage() {
         const updateData: any = { ...form };
         if (!updateData.password) delete updateData.password;
         delete updateData.username; // Can't change username
-        
+
+        // Non inviare role e is_active se sono disabilitati (account sistema o se stessi)
+        const isRoleDisabled = selectedUser.is_system_account || selectedUser.id === currentUser?.id;
+        if (isRoleDisabled) {
+          delete updateData.role;
+          delete updateData.is_active;
+        }
+
         const res = await fetch(`${API_BASE}/users/${selectedUser.id}`, {
           method: 'PUT',
           headers,
@@ -198,16 +217,46 @@ export default function UsersPage() {
 
   const handleDelete = async (user: User) => {
     if (!confirm(`Eliminare l'utente "${user.username}"?`)) return;
-    
+
     try {
-      await fetch(`${API_BASE}/users/${user.id}`, {
+      const res = await fetch(`${API_BASE}/users/${user.id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${getToken()}` }
       });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.detail || 'Errore durante l\'eliminazione');
+        return;
+      }
       loadData();
     } catch (err) {
       console.error(err);
+      alert('Errore durante l\'eliminazione');
     }
+  };
+
+  // Determina se l'utente può essere eliminato
+  const canDeleteUser = (user: User): boolean => {
+    // Account di sistema (infostudio) non può essere eliminato
+    if (user.is_system_account) return false;
+    // Non puoi eliminare te stesso
+    if (user.id === currentUser?.id) return false;
+    // Admin può eliminare solo utenti 'user'
+    if (currentUser?.role === 'admin' && user.role !== 'user') return false;
+    return true;
+  };
+
+  // Determina se l'utente può essere modificato
+  const canEditUser = (user: User): boolean => {
+    // Account di sistema (infostudio) può essere modificato SOLO da se stesso
+    if (user.is_system_account) {
+      return user.id === currentUser?.id;
+    }
+    // Admin può modificare solo utenti 'user' o se stesso
+    if (currentUser?.role === 'admin' && user.role !== 'user' && user.id !== currentUser?.id) {
+      return false;
+    }
+    return true;
   };
 
   const filteredUsers = users.filter(u => 
@@ -216,16 +265,22 @@ export default function UsersPage() {
     u.email?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const roleColors = {
+  const roleColors: Record<string, string> = {
+    superuser: 'bg-purple-100 text-purple-700 border-purple-200',
     admin: 'bg-red-100 text-red-700 border-red-200',
-    editor: 'bg-blue-100 text-blue-700 border-blue-200',
-    viewer: 'bg-gray-100 text-gray-700 border-gray-200'
+    user: 'bg-gray-100 text-gray-700 border-gray-200'
   };
 
-  const roleLabels = {
+  const roleLabels: Record<string, string> = {
+    superuser: 'Superuser',
     admin: 'Amministratore',
-    editor: 'Editor',
-    viewer: 'Visualizzatore'
+    user: 'Utente'
+  };
+
+  const roleIcons: Record<string, React.ElementType> = {
+    superuser: ShieldAlert,
+    admin: ShieldCheck,
+    user: Shield
   };
 
   if (loading) {
@@ -306,16 +361,23 @@ export default function UsersPage() {
                 </div>
                 
                 {/* Role Badge */}
-                <div className={`px-3 py-1 rounded-full text-sm font-medium border ${roleColors[user.role]}`}>
+                <div className={`px-3 py-1 rounded-full text-sm font-medium border ${roleColors[user.role] || roleColors.user}`}>
                   <div className="flex items-center gap-1.5">
-                    <Shield className="w-3.5 h-3.5" />
-                    {roleLabels[user.role]}
+                    {(() => {
+                      const RoleIcon = roleIcons[user.role] || Shield;
+                      return <RoleIcon className="w-3.5 h-3.5" />;
+                    })()}
+                    {roleLabels[user.role] || user.role}
+                    {user.is_system_account && (
+                      <span className="ml-1 text-xs opacity-60">(sistema)</span>
+                    )}
                   </div>
                 </div>
-                
+
                 {/* Actions */}
                 <div className="flex items-center gap-1">
-                  {user.role !== 'admin' && (
+                  {/* Assegna - solo per utenti non-admin/non-superuser */}
+                  {user.role === 'user' && (
                     <button
                       onClick={() => openAssignModal(user)}
                       className="p-2 hover:bg-slate-100 rounded-lg transition"
@@ -324,14 +386,18 @@ export default function UsersPage() {
                       <FileText className="w-4 h-4 text-slate-500" />
                     </button>
                   )}
-                  <button
-                    onClick={() => openEditModal(user)}
-                    className="p-2 hover:bg-slate-100 rounded-lg transition"
-                    title="Modifica"
-                  >
-                    <Edit className="w-4 h-4 text-slate-500" />
-                  </button>
-                  {user.username !== 'admin' && (
+                  {/* Modifica */}
+                  {canEditUser(user) && (
+                    <button
+                      onClick={() => openEditModal(user)}
+                      className="p-2 hover:bg-slate-100 rounded-lg transition"
+                      title="Modifica"
+                    >
+                      <Edit className="w-4 h-4 text-slate-500" />
+                    </button>
+                  )}
+                  {/* Elimina - nascosto per account sistema e per se stessi */}
+                  {canDeleteUser(user) && (
                     <button
                       onClick={() => handleDelete(user)}
                       className="p-2 hover:bg-red-50 rounded-lg transition"
@@ -421,29 +487,58 @@ export default function UsersPage() {
                     />
                   </div>
                   
+                  {/* Ruolo - disabilitato per account sistema o se stessi */}
                   <div>
                     <label className="block text-sm font-medium mb-1">Ruolo</label>
-                    <select
-                      value={form.role}
-                      onChange={(e) => setForm({ ...form, role: e.target.value as any })}
-                      className="w-full px-3 py-2 border rounded-lg"
-                    >
-                      <option value="viewer">Visualizzatore (solo lettura)</option>
-                      <option value="editor">Editor (può modificare)</option>
-                      <option value="admin">Amministratore (accesso completo)</option>
-                    </select>
+                    {(() => {
+                      const isRoleDisabled = modalMode === 'edit' && (selectedUser?.is_system_account || selectedUser?.id === currentUser?.id);
+                      // In edit mode con campo disabilitato, mostra tutte le opzioni per visualizzare il valore corrente
+                      // In create mode o edit con campo abilitato, mostra solo le opzioni che l'utente può selezionare
+                      const showAllOptions = isRoleDisabled || isSuperuser;
+
+                      return (
+                        <select
+                          value={form.role}
+                          onChange={(e) => setForm({ ...form, role: e.target.value as any })}
+                          disabled={isRoleDisabled}
+                          aria-label="Ruolo utente"
+                          className="w-full px-3 py-2 border rounded-lg disabled:bg-slate-100 disabled:cursor-not-allowed"
+                        >
+                          <option value="user">Utente (visualizza dashboard assegnate)</option>
+                          {showAllOptions && (
+                            <>
+                              <option value="admin">Amministratore (gestisce dashboard e utenti)</option>
+                              <option value="superuser">Superuser (accesso completo)</option>
+                            </>
+                          )}
+                        </select>
+                      );
+                    })()}
+                    {modalMode === 'edit' && selectedUser?.is_system_account && (
+                      <p className="text-xs text-amber-600 mt-1">Il ruolo dell'account di sistema non può essere modificato</p>
+                    )}
+                    {modalMode === 'edit' && !selectedUser?.is_system_account && selectedUser?.id === currentUser?.id && (
+                      <p className="text-xs text-slate-500 mt-1">Non puoi modificare il tuo ruolo</p>
+                    )}
                   </div>
-                  
+
+                  {/* Utente attivo - disabilitato per account sistema o se stessi */}
                   {modalMode === 'edit' && (
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={form.is_active}
-                        onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
-                        className="w-4 h-4 rounded"
-                      />
-                      <span>Utente attivo</span>
-                    </label>
+                    <div>
+                      <label className={`flex items-center gap-2 ${(selectedUser?.is_system_account || selectedUser?.id === currentUser?.id) ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={form.is_active}
+                          onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+                          disabled={selectedUser?.is_system_account || selectedUser?.id === currentUser?.id}
+                          className="w-4 h-4 rounded disabled:cursor-not-allowed"
+                        />
+                        <span>Utente attivo</span>
+                      </label>
+                      {selectedUser?.is_system_account && (
+                        <p className="text-xs text-amber-600 mt-1">Lo stato dell'account di sistema non può essere modificato</p>
+                      )}
+                    </div>
                   )}
                 </div>
               )}

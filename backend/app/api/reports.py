@@ -70,9 +70,9 @@ async def test_query(
 @router.get("", response_model=List[ReportResponse])
 async def list_reports(
     db: AsyncSession = Depends(get_db),
-    user = Depends(get_current_superuser)  # SECURITY: Solo superuser può vedere la lista report
+    user = Depends(get_current_admin)  # SECURITY: Superuser e Admin possono vedere la lista report
 ):
-    """List all reports (SUPERUSER ONLY)"""
+    """List all reports (SUPERUSER e ADMIN)"""
     result = await db.execute(select(Report).order_by(Report.name))
     return result.scalars().all()
 

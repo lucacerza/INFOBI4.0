@@ -14,12 +14,12 @@ import {
 /**
  * Menu di navigazione con controllo accessi per ruolo:
  * - superuser: Vede tutto (Connessioni, Report, Dashboard, Utenti)
- * - admin: Vede Dashboard, Utenti
+ * - admin: Vede Report (sola lettura), Dashboard, Utenti
  * - user: Vede solo Dashboard (assegnate)
  */
 const navItems = [
   { path: '/connections', label: 'Connessioni', icon: Database, roles: ['superuser'] },
-  { path: '/reports', label: 'Report', icon: FileText, roles: ['superuser'] },
+  { path: '/reports', label: 'Report', icon: FileText, roles: ['superuser', 'admin'] },
   { path: '/dashboards', label: 'Dashboard', icon: LayoutDashboard, roles: ['superuser', 'admin', 'user'] },
   { path: '/users', label: 'Utenti', icon: Users, roles: ['superuser', 'admin'] },
 ];

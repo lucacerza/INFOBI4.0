@@ -49,7 +49,7 @@ export default function ReportPivotPage() {
   const [report, setReport] = useState<any>(null);
   const [schema, setSchema] = useState<{ columns: ColumnInfo[] } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showBuilder, setShowBuilder] = useState(true);
+  const [showBuilder, setShowBuilder] = useState(false);
   const [pivotConfig, setPivotConfig] = useState<PivotConfig>({
     rows: [],
     columns: [],
@@ -182,8 +182,8 @@ export default function ReportPivotPage() {
             Configurazione
           </button>
 
-          {/* Edit Report (go to editor) */}
-          {user?.role === 'admin' && (
+          {/* Edit Report (go to editor) - solo superuser */}
+          {user?.role === 'superuser' && (
             <Link
               to={`/reports/${reportId}/edit`}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white transition"

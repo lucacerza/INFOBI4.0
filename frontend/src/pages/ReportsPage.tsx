@@ -28,7 +28,7 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const { user } = useAuthStore();
-  const isAdmin = user?.role === 'admin';
+  const isSuperuser = user?.role === 'superuser';  // Solo superuser può creare/modificare/eliminare report
   
   useEffect(() => {
     loadReports();
@@ -89,7 +89,7 @@ export default function ReportsPage() {
           <p className="text-gray-500">{reports.length} report disponibili</p>
         </div>
         
-        {isAdmin && (
+        {isSuperuser && (
           <Link
             to="/reports/new"
             className="inline-flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition"
@@ -160,7 +160,7 @@ export default function ReportsPage() {
               </Link>
 
               {/* Action buttons (only for admin) */}
-              {isAdmin && (
+              {isSuperuser && (
                 <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition">
                   <button
                     onClick={(e) => {

@@ -180,6 +180,11 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    # Run migrations for existing databases
+    async with AsyncSessionLocal() as session:
+        from app.db.migrations import run_migrations
+        await run_migrations(session)
+
     # Create system superuser account (infostudio)
     async with AsyncSessionLocal() as session:
         from sqlalchemy import select

@@ -94,9 +94,11 @@ function App() {
           {/* Default: redirect to dashboards (accessible by all) */}
           <Route index element={<Navigate to="/dashboards" replace />} />
 
-          {/* SUPERUSER ONLY: Connections and Reports management */}
+          {/* SUPERUSER ONLY: Connections */}
           <Route path="connections" element={<SuperuserRoute><ConnectionsPage /></SuperuserRoute>} />
-          <Route path="reports" element={<SuperuserRoute><ReportsPage /></SuperuserRoute>} />
+
+          {/* Reports: lista visibile a superuser e admin, modifica solo superuser */}
+          <Route path="reports" element={<AdminRoute><ReportsPage /></AdminRoute>} />
           <Route path="reports/new" element={<SuperuserRoute><ReportEditorPage /></SuperuserRoute>} />
           <Route path="reports/:id/edit" element={<SuperuserRoute><ReportEditorPage /></SuperuserRoute>} />
 

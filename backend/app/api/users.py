@@ -52,7 +52,8 @@ class UserResponse(BaseModel):
     full_name: Optional[str]
     role: str
     is_active: bool
-    
+    is_system_account: bool = False  # True solo per infostudio
+
     class Config:
         from_attributes = True
 
@@ -79,16 +80,23 @@ async def list_users(
     """
     List users based on role:
     - SUPERUSER: vede tutti gli utenti
-    - ADMIN: vede solo utenti con ruolo 'user'
+    - ADMIN: vede utenti con ruolo 'user' + se stesso
     """
+    from sqlalchemy import or_
+
     if current_user.role == "superuser":
         # Superuser vede tutti
         result = await db.execute(select(User).order_by(User.username))
     else:
-        # Admin vede solo utenti con ruolo 'user'
+        # Admin vede utenti 'user' + se stesso (per potersi modificare)
         result = await db.execute(
             select(User)
-            .where(User.role == "user")
+            .where(
+                or_(
+                    User.role == "user",
+                    User.id == current_user.id  # Include se stesso
+                )
+            )
             .order_by(User.username)
         )
     users = result.scalars().all()
@@ -216,15 +224,31 @@ async def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="Utente non trovato")
 
-    # SECURITY: Account di sistema (infostudio) non può essere modificato
+    # SECURITY: Account di sistema (infostudio) - regole speciali
     if user.is_system_account:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="L'account di sistema non può essere modificato"
-        )
+        # Solo infostudio può modificare se stesso
+        if user.id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="L'account di sistema può essere modificato solo da se stesso"
+            )
+        # Anche infostudio NON può modificare il proprio ruolo o stato attivo
+        if user_data.role is not None or user_data.is_active is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Il ruolo e lo stato dell'account di sistema non possono essere modificati"
+            )
+
+    # SECURITY: Non puoi modificare il tuo ruolo o stato attivo (vale per tutti)
+    elif user.id == current_user.id:
+        if user_data.role is not None or user_data.is_active is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Non puoi modificare il tuo ruolo o stato attivo"
+            )
 
     # SECURITY: Admin può modificare solo utenti 'user'
-    if current_user.role == "admin" and user.role != "user":
+    if current_user.role == "admin" and user.role != "user" and user.id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Non hai i permessi per modificare questo utente"
