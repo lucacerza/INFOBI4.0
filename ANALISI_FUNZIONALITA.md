@@ -1368,11 +1368,90 @@ Questo documento rappresenta la roadmap tecnica per l'evoluzione di INFOBI 4.0 v
 ### Prossimi Passi Immediati
 
 ```
-1. [ ] Implementare gerarchia permessi (URGENTE)
-2. [ ] Proteggere endpoint connections.py e reports.py
-3. [ ] Migrare admin → infostudio (superuser)
+1. [x] Implementare gerarchia permessi (COMPLETATO - 22/01/2026)
+2. [x] Proteggere endpoint connections.py e reports.py (COMPLETATO)
+3. [x] Migrare admin → infostudio (superuser) (COMPLETATO)
 4. [ ] Setup ECharts per grafici
-5. [ ] Implementare colonne calcolate con Polars
+5. [ ] AI Assistant (query linguaggio naturale)
+6. [ ] Implementare colonne calcolate con Polars
+7. [ ] Dashboard completa con layout
+```
+
+---
+
+## 9. AI Assistant (NUOVO)
+
+> **Data aggiunta**: 26 Gennaio 2026
+
+### 9.1 Descrizione
+
+Integrazione di un assistente AI per permettere agli utenti di:
+- Fare domande in linguaggio naturale sui dati
+- Generare configurazioni pivot automaticamente
+- Ricevere aiuto nella scrittura di formule
+
+### 9.2 Casi d'Uso
+
+| Use Case | Input Utente | Output AI |
+|----------|--------------|-----------|
+| Query naturale | "Mostrami vendite per regione" | Config pivot JSON |
+| Formula helper | "Come calcolo il margine?" | `(Venduto-Costo)/Venduto*100` |
+| Suggerimenti | Schema colonne | "Hai dati temporali, raggruppa per mese?" |
+
+### 9.3 Architettura
+
+```
+Frontend (Chat) → Backend /api/ai/ask → Claude API
+                        ↓
+                  JSON config pivot
+                        ↓
+                  Applica a BiGrid
+```
+
+### 9.4 Endpoint API
+
+```python
+# api/ai.py
+@router.post("/ask")
+async def ai_ask(
+    request: AIRequest,  # question, report_id
+    user = Depends(get_current_user)
+):
+    schema = await get_report_schema(request.report_id)
+
+    response = await anthropic.messages.create(
+        model="claude-sonnet-4-20250514",
+        messages=[{
+            "role": "user",
+            "content": f"Schema: {schema}\nDomanda: {request.question}\nRispondi JSON pivot config"
+        }]
+    )
+
+    return {"config": parse_json(response), "explanation": "..."}
+```
+
+### 9.5 Stima Effort
+
+| Componente | Giorni |
+|------------|--------|
+| Backend endpoint + Claude API | 2 |
+| Prompt engineering | 1-2 |
+| Chat UI frontend | 2-3 |
+| Testing | 1 |
+| **Totale** | **6-8 giorni** |
+
+---
+
+## 10. Roadmap Aggiornata (Gennaio 2026)
+
+```
+✅ Settimana 1:    Sistema Permessi (COMPLETATO)
+🔄 Settimana 2:    Grafici ECharts (IN CORSO)
+   Settimana 3:    AI Assistant base
+   Settimana 4-5:  Colonne Calcolate (Polars)
+   Settimana 6:    Dashboard completa
+   Settimana 7:    Row-Level Security
+   Settimana 8+:   Enterprise Features
 ```
 
 ---
