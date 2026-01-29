@@ -12,6 +12,7 @@ import {
   Table, BarChart3, Settings
 } from 'lucide-react';
 import { reportsApi, pivotApi } from '../services/api';
+import { toast } from '../stores/toastStore';
 
 interface Widget {
   id: number;
@@ -62,7 +63,7 @@ export default function DashboardViewerPage() {
         setWidgets(data.widgets || []);
       }
     } catch (err) {
-      console.error(err);
+      toast.error('Errore caricamento dashboard');
     } finally {
       setLoading(false);
     }
@@ -77,7 +78,7 @@ export default function DashboardViewerPage() {
         setReports(await res.json());
       }
     } catch (err) {
-      console.error(err);
+      toast.error('Errore caricamento report');
     }
   };
 
@@ -86,38 +87,64 @@ export default function DashboardViewerPage() {
     if (!report) return;
 
     try {
-      // Get report schema to setup default config
-      let defaultConfig: Widget['config'] = {};
+      // Try to load the saved pivot config from the report
+      let widgetConfig: Widget['config'] = {};
 
       try {
-        const schema = await pivotApi.getSchema(reportId);
-        const numericCols = schema.columns.filter((c: any) => c.type === 'number');
-        const stringCols = schema.columns.filter((c: any) => c.type === 'string');
+        // First, try to get the saved report configuration
+        const configRes = await fetch(`/api/pivot/${reportId}/config`, {
+          headers: { 'Authorization': `Bearer ${getToken()}` }
+        });
 
-        if (widgetType === 'chart' && numericCols.length > 0) {
-          defaultConfig = {
-            chartType: 'bar',
-            groupBy: stringCols.length > 0 ? [stringCols[0].name] : [],
-            metrics: [{
-              id: 'metric-1',
-              name: numericCols[0].label || numericCols[0].name,
-              field: numericCols[0].name,
-              aggregation: 'SUM'
-            }]
-          };
-        } else if (widgetType === 'grid') {
-          defaultConfig = {
-            groupBy: stringCols.length > 0 ? [stringCols[0].name] : [],
-            metrics: numericCols.slice(0, 3).map((c: any, i: number) => ({
-              id: `metric-${i}`,
-              name: c.label || c.name,
-              field: c.name,
-              aggregation: 'SUM'
-            }))
-          };
+        if (configRes.ok) {
+          const savedConfig = await configRes.json();
+          // Use the saved config if it has data
+          if (savedConfig.rows?.length > 0 || savedConfig.values?.length > 0) {
+            widgetConfig = {
+              chartType: widgetType === 'chart' ? 'bar' : undefined,
+              groupBy: savedConfig.rows || [],
+              splitBy: savedConfig.columns || [],
+              metrics: (savedConfig.values || []).map((v: any, i: number) => ({
+                id: v.id || `metric-${i}`,
+                name: v.name || v.field,
+                field: v.field,
+                aggregation: v.aggregation || 'SUM'
+              }))
+            };
+          }
+        }
+
+        // If no saved config, fall back to schema-based defaults
+        if (!widgetConfig.groupBy?.length && !widgetConfig.metrics?.length) {
+          const schema = await pivotApi.getSchema(reportId);
+          const numericCols = schema.columns.filter((c: any) => c.type === 'number');
+          const stringCols = schema.columns.filter((c: any) => c.type === 'string');
+
+          if (widgetType === 'chart' && numericCols.length > 0) {
+            widgetConfig = {
+              chartType: 'bar',
+              groupBy: stringCols.length > 0 ? [stringCols[0].name] : [],
+              metrics: [{
+                id: 'metric-1',
+                name: numericCols[0].label || numericCols[0].name,
+                field: numericCols[0].name,
+                aggregation: 'SUM'
+              }]
+            };
+          } else if (widgetType === 'grid') {
+            widgetConfig = {
+              groupBy: stringCols.length > 0 ? [stringCols[0].name] : [],
+              metrics: numericCols.slice(0, 3).map((c: any, i: number) => ({
+                id: `metric-${i}`,
+                name: c.label || c.name,
+                field: c.name,
+                aggregation: 'SUM'
+              }))
+            };
+          }
         }
       } catch (e) {
-        console.warn('Could not get schema for default config');
+        console.warn('Could not get config for widget:', e);
       }
 
       const res = await fetch(`/api/dashboards/${dashboardId}/widgets`, {
@@ -130,18 +157,18 @@ export default function DashboardViewerPage() {
           report_id: reportId,
           title: report.name,
           widget_type: widgetType,
-          config: defaultConfig,
+          config: widgetConfig,
           position: { x: 0, y: widgets.length, w: 6, h: 4 }
         })
       });
 
       if (res.ok) {
         const newWidget = await res.json();
-        setWidgets([...widgets, { ...newWidget, config: defaultConfig }]);
+        setWidgets([...widgets, newWidget]);
         setShowAddModal(false);
       }
     } catch (err) {
-      console.error(err);
+      toast.error('Errore aggiunta widget');
     }
   };
 
@@ -154,8 +181,9 @@ export default function DashboardViewerPage() {
         headers: { 'Authorization': `Bearer ${getToken()}` }
       });
       setWidgets(widgets.filter(w => w.id !== widgetId));
+      toast.success('Widget rimosso');
     } catch (err) {
-      console.error(err);
+      toast.error('Errore rimozione widget');
     }
   };
 
@@ -165,7 +193,7 @@ export default function DashboardViewerPage() {
       w.id === widgetId ? { ...w, config: newConfig } : w
     ));
 
-    // Persist to backend (if endpoint exists)
+    // Persist to backend
     try {
       await fetch(`/api/dashboards/${dashboardId}/widgets/${widgetId}`, {
         method: 'PUT',
@@ -178,6 +206,18 @@ export default function DashboardViewerPage() {
     } catch (err) {
       console.warn('Could not save widget config');
     }
+  };
+
+  const toggleWidgetType = async (widgetId: number, currentType: 'grid' | 'chart') => {
+    const newType = currentType === 'grid' ? 'chart' : 'grid';
+
+    // Update local state
+    setWidgets(widgets.map(w =>
+      w.id === widgetId ? { ...w, widget_type: newType } : w
+    ));
+
+    // Persist to backend - note: backend doesn't support changing widget_type yet
+    // This is a local-only toggle for now
   };
 
   if (loading) {
@@ -241,13 +281,14 @@ export default function DashboardViewerPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {widgets.map(widget => (
+            {widgets.map((widget, index) => (
               <WidgetCard
-                key={widget.id}
+                key={widget.id ?? `widget-${index}`}
                 widget={widget}
                 canEdit={isAdminOrSuperuser}
                 onRemove={() => removeWidget(widget.id)}
                 onConfigChange={(config) => updateWidgetConfig(widget.id, config)}
+                onToggleType={() => toggleWidgetType(widget.id, widget.widget_type)}
               />
             ))}
           </div>
@@ -271,15 +312,28 @@ function WidgetCard({
   widget,
   canEdit,
   onRemove,
-  onConfigChange
+  onConfigChange,
+  onToggleType
 }: {
   widget: Widget;
   canEdit: boolean;
   onRemove: () => void;
   onConfigChange: (config: Widget['config']) => void;
+  onToggleType: () => void;
 }) {
   const [showSettings, setShowSettings] = useState(false);
   const config = widget.config || {};
+
+  // Validate widget has required data
+  if (!widget.report_id) {
+    return (
+      <div className="bg-white rounded-xl border overflow-hidden p-4" style={{ height: '450px' }}>
+        <div className="h-full flex items-center justify-center text-slate-400">
+          <p>Widget non configurato correttamente (report mancante)</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-xl border overflow-hidden" style={{ height: '450px' }}>
@@ -306,13 +360,18 @@ function WidgetCard({
 
           {canEdit && (
             <>
+              {/* Toggle between chart and grid */}
               <button
                 type="button"
-                onClick={() => setShowSettings(!showSettings)}
-                className={`p-1 rounded ${showSettings ? 'bg-blue-100 text-blue-600' : 'hover:bg-slate-100 text-slate-500'}`}
-                title="Impostazioni"
+                onClick={onToggleType}
+                className="p-1 hover:bg-slate-100 rounded text-slate-500"
+                title={widget.widget_type === 'chart' ? 'Passa a Tabella' : 'Passa a Grafico'}
               >
-                <Settings className="w-4 h-4" />
+                {widget.widget_type === 'chart' ? (
+                  <Table className="w-4 h-4" />
+                ) : (
+                  <BarChart3 className="w-4 h-4" />
+                )}
               </button>
               <button
                 type="button"
@@ -337,13 +396,18 @@ function WidgetCard({
             metrics={config.metrics || []}
             splitBy={config.splitBy}
             height="100%"
+            onDrillDown={(category, value, seriesName) => {
+              // TODO: Implement proper drill-down (filter or navigate)
+              alert(`Drill-down: ${category}\n${seriesName}: ${value.toLocaleString('it-IT')}`);
+            }}
           />
         ) : (
           <TreeDataGrid
             reportId={widget.report_id}
             rowGroups={config.groupBy || []}
             valueCols={config.metrics || []}
-            previewMode={true}
+            pivotCols={config.splitBy || []}
+            previewMode={false}
           />
         )}
       </div>

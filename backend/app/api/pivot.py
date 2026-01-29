@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from app.db.database import get_db, Report, Connection
 from app.core.deps import get_current_user
 from app.core.security import decrypt_password
-from app.services.query_engine import QueryEngine
+from app.services.query_engine import QueryEngine, _build_safe_filter_clause
 from app.core.engine_pool import get_engine
 from app.services.cache import cache
 
@@ -247,32 +247,15 @@ async def execute_pivot_with_split(
     else:
         group_clause = ', '.join(f'"{col}"' for col in all_groups)
 
-    # Build WHERE clause
-    where_sql = ""
-    if filters:
-        conditions = []
-        for field, filter_def in filters.items():
-            col = f'[{field}]' if is_mssql else f'"{field}"'
-            if filter_def.get('type') == 'contains':
-                conditions.append(f"{col} LIKE '%{filter_def['value']}%'")
-            elif filter_def.get('type') == 'equals':
-                conditions.append(f"{col} = '{filter_def['value']}'")
-        if conditions:
-            where_sql = "WHERE " + " AND ".join(conditions)
+    # Build WHERE clause using parameterized queries (SQL injection safe)
+    where_sql, filter_params = _build_safe_filter_clause(filters, is_mssql)
 
-    # Apply Limit if provided (for Preview mode)
-    limit_sql = ""
-    if limit:
-        if is_mssql:
-            limit_sql = f"TOP {limit}"
-        else:
-            limit_sql = f"LIMIT {limit}"
-
-    # Final SQL
-    if limit and is_mssql:
-        sql = f"SELECT {limit_sql} {', '.join(select_parts)} FROM ({base_query}) AS base_data {where_sql} GROUP BY {group_clause}"
-    elif limit:
-        sql = f"SELECT {', '.join(select_parts)} FROM ({base_query}) AS base_data {where_sql} GROUP BY {group_clause} {limit_sql}"
+    # Final SQL with safe limit handling
+    safe_limit = int(limit) if limit else None
+    if safe_limit and is_mssql:
+        sql = f"SELECT TOP {safe_limit} {', '.join(select_parts)} FROM ({base_query}) AS base_data {where_sql} GROUP BY {group_clause}"
+    elif safe_limit:
+        sql = f"SELECT {', '.join(select_parts)} FROM ({base_query}) AS base_data {where_sql} GROUP BY {group_clause} LIMIT {safe_limit}"
     else:
         sql = f"""
             SELECT {', '.join(select_parts)}
@@ -280,16 +263,15 @@ async def execute_pivot_with_split(
             {where_sql}
             GROUP BY {group_clause}
         """
-    
+
     logger.info(f"Split pivot SQL: {sql[:300]}...")
-    
-    # Execute query
-    # Use QueryEngine executor to avoid blocking the event loop
+
+    # Execute query with parameters (SQL injection safe)
     loop = asyncio.get_event_loop()
     df = await loop.run_in_executor(
         None,
-        QueryEngine._execute_df_sync,
-        db_type, config, sql
+        QueryEngine._execute_df_with_params_sync,
+        db_type, config, sql, filter_params
     )
     
     arrow_table = df.to_arrow()

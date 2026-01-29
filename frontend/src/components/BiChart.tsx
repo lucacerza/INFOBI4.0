@@ -7,9 +7,9 @@
 import { useEffect, useState, useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
 import * as echarts from 'echarts';
-import * as arrow from 'apache-arrow';
 import { Loader2, BarChart3, LineChart, PieChart, TrendingUp } from 'lucide-react';
-import { pivotApi } from '../services/api';
+import { reportsApi } from '../services/api';
+import { logger } from '../utils/logger';
 
 export type ChartType = 'bar' | 'line' | 'pie' | 'area' | 'kpi' | 'horizontal-bar';
 
@@ -31,6 +31,9 @@ interface BiChartProps {
   height?: number | string;
   showLegend?: boolean;
   colorPalette?: string[];
+  topN?: number;               // Limit items (default: 50)
+  showDataZoom?: boolean;      // Enable scroll/zoom on axis (default: true for bar/line)
+  onDrillDown?: (category: string, value: number, seriesName: string) => void; // Click handler for drill-down
 }
 
 // Default color palette (matching INFOBI style)
@@ -55,11 +58,17 @@ export default function BiChart({
   title,
   height = 400,
   showLegend = true,
-  colorPalette = DEFAULT_COLORS
+  colorPalette = DEFAULT_COLORS,
+  topN,
+  showDataZoom,
+  onDrillDown
 }: BiChartProps) {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Default dataZoom for bar/line charts with many items (Power BI style scrolling)
+  const effectiveDataZoom = showDataZoom ?? (chartType === 'bar' || chartType === 'line' || chartType === 'horizontal-bar' || chartType === 'area');
 
   // Load data from pivot API
   useEffect(() => {
@@ -76,33 +85,30 @@ export default function BiChart({
     setError(null);
 
     try {
-      const response = await pivotApi.execute(reportId, {
-        group_by: groupBy,
-        split_by: splitBy,
-        metrics: metrics.map(m => ({
-          name: m.name,
-          field: m.field,
-          type: m.aggregation.toLowerCase(),
-          aggregation: m.aggregation
+      // For charts, only use the FIRST groupBy level for readability
+      const chartGroupBy = groupBy.length > 0 ? [groupBy[0]] : [];
+
+      // Use the same API as TreeDataGrid (pivot-drill) for consistent aggregation
+      const response = await reportsApi.executePivotDrill(reportId, {
+        rowGroupCols: chartGroupBy,
+        groupKeys: [], // Top level, no parent keys
+        pivotCols: splitBy,
+        valueCols: metrics.map(m => ({
+          colId: m.field,
+          aggFunc: m.aggregation.toLowerCase()
         })),
-        filters,
-        calculate_delta: false,
-        limit: 1000 // Limit for charts
+        filterModel: filters || {},
+        sortModel: [],
+        startRow: 0,
+        endRow: topN || 50
       });
 
-      // Parse Arrow IPC buffer
-      const table = arrow.tableFromIPC(response.data);
-      const rows: any[] = [];
+      // Response is JSON with { rows, count }
+      const rows = response.rows || [];
 
-      for (let i = 0; i < table.numRows; i++) {
-        const row: any = {};
-        for (const field of table.schema.fields) {
-          const column = table.getChild(field.name);
-          if (column) {
-            row[field.name] = column.get(i);
-          }
-        }
-        rows.push(row);
+      // Debug: log first row
+      if (rows.length > 0) {
+        logger.debug('BiChart first row:', rows[0]);
       }
 
       setData(rows);
@@ -118,16 +124,65 @@ export default function BiChart({
   const chartOptions = useMemo(() => {
     if (data.length === 0 || metrics.length === 0) return null;
 
-    // Determine the category field (first groupBy or key_val)
-    const categoryField = groupBy.length > 0 ? 'key_val' : Object.keys(data[0])[0];
-    const categories = data.map(row => row[categoryField] || 'N/A');
+    // Determine the category field - try multiple options
+    // Backend returns 'key_val' for grouped queries
+    let categoryField = 'key_val';
+    if (!data[0]?.key_val && data[0]?.key_val !== 0) {
+      // Fallback: try groupBy field name, then first string field
+      if (groupBy.length > 0 && data[0]?.[groupBy[0]] !== undefined) {
+        categoryField = groupBy[0];
+      } else {
+        // Find first non-numeric field
+        const firstKey = Object.keys(data[0]).find(k =>
+          typeof data[0][k] === 'string' || k.includes('key') || k.includes('name')
+        ) || Object.keys(data[0])[0];
+        categoryField = firstKey;
+      }
+    }
+
+    const categories = data.map(row => {
+      const val = row[categoryField];
+      if (val === null || val === undefined || val === '') return 'N/A';
+      return String(val);
+    });
+
+    logger.debug('BiChart categories:', categoryField, categories);
+
+    // Format large numbers - Italian style (Mld for miliardi, Mln for milioni)
+    const formatNumber = (value: number): string => {
+      if (Math.abs(value) >= 1e9) return (value / 1e9).toFixed(1) + ' Mld';
+      if (Math.abs(value) >= 1e6) return (value / 1e6).toFixed(1) + ' Mln';
+      if (Math.abs(value) >= 1e3) return (value / 1e3).toFixed(0) + ' K';
+      return value.toLocaleString('it-IT');
+    };
+
+    // Truncate long labels
+    const truncateLabel = (label: string, maxLen: number = 10): string => {
+      if (!label || label.length <= maxLen) return label;
+      return label.substring(0, maxLen - 1) + '…';
+    };
+
+    // Truncated categories for axis (full names in tooltip)
+    const truncatedCategories = categories.map(c => truncateLabel(c));
 
     // Common options
     const baseOptions: echarts.EChartsOption = {
       color: colorPalette,
       tooltip: {
         trigger: chartType === 'pie' ? 'item' : 'axis',
-        axisPointer: { type: 'shadow' }
+        axisPointer: { type: 'shadow' },
+        formatter: chartType === 'pie' ? undefined : (params: any) => {
+          if (!Array.isArray(params)) params = [params];
+          // Get full category name (not truncated)
+          const dataIndex = params[0]?.dataIndex ?? 0;
+          const fullName = categories[dataIndex] || params[0]?.axisValue || '';
+          let result = `<strong>${fullName}</strong><br/>`;
+          params.forEach((p: any) => {
+            const val = typeof p.value === 'number' ? p.value.toLocaleString('it-IT', { maximumFractionDigits: 2 }) : p.value;
+            result += `${p.marker} ${p.seriesName}: <strong>€ ${val}</strong><br/>`;
+          });
+          return result;
+        }
       },
       legend: showLegend ? {
         bottom: 0,
@@ -151,26 +206,60 @@ export default function BiChart({
       };
     }
 
+    // DataZoom config for scrollable charts (Power BI style)
+    const dataZoomConfig = effectiveDataZoom && data.length > 8 ? [
+      {
+        type: 'slider',
+        show: true,
+        start: 0,
+        end: Math.min(100, (8 / data.length) * 100), // Show ~8 items initially
+        height: 20,
+        bottom: showLegend ? 35 : 5,
+        borderColor: 'transparent',
+        backgroundColor: '#f1f5f9',
+        fillerColor: 'rgba(59, 130, 246, 0.2)',
+        handleStyle: { color: '#3b82f6' }
+      },
+      {
+        type: 'inside', // Enable scroll with mouse wheel
+        start: 0,
+        end: Math.min(100, (8 / data.length) * 100)
+      }
+    ] : undefined;
+
     switch (chartType) {
       case 'bar':
       case 'horizontal-bar':
+        const barGridBottom = effectiveDataZoom && data.length > 8 ? (showLegend ? '20%' : '15%') : (showLegend ? '15%' : '3%');
         return {
           ...baseOptions,
+          grid: {
+            left: '3%',
+            right: '4%',
+            bottom: barGridBottom,
+            top: title ? '15%' : '10%',
+            containLabel: true
+          },
+          dataZoom: chartType === 'bar' ? dataZoomConfig : undefined,
           xAxis: chartType === 'horizontal-bar' ? {
             type: 'value'
           } : {
             type: 'category',
-            data: categories,
+            data: truncatedCategories,
             axisLabel: {
-              rotate: categories.length > 8 ? 45 : 0,
-              interval: 0
+              rotate: categories.length > 5 ? 30 : 0,
+              interval: 0,
+              fontSize: 11
             }
           },
           yAxis: chartType === 'horizontal-bar' ? {
             type: 'category',
-            data: categories
+            data: truncatedCategories
           } : {
-            type: 'value'
+            type: 'value',
+            axisLabel: {
+              formatter: (value: number) => formatNumber(value)
+            }
           },
           series: metrics.map(metric => ({
             name: metric.name,
@@ -185,17 +274,32 @@ export default function BiChart({
 
       case 'line':
       case 'area':
+        const lineGridBottom = effectiveDataZoom && data.length > 8 ? (showLegend ? '20%' : '15%') : (showLegend ? '15%' : '3%');
         return {
           ...baseOptions,
+          grid: {
+            left: '3%',
+            right: '4%',
+            bottom: lineGridBottom,
+            top: title ? '15%' : '10%',
+            containLabel: true
+          },
+          dataZoom: dataZoomConfig,
           xAxis: {
             type: 'category',
-            data: categories,
+            data: truncatedCategories,
             boundaryGap: false,
             axisLabel: {
-              rotate: categories.length > 8 ? 45 : 0
+              rotate: categories.length > 5 ? 30 : 0,
+              fontSize: 11
             }
           },
-          yAxis: { type: 'value' },
+          yAxis: {
+            type: 'value',
+            axisLabel: {
+              formatter: (value: number) => formatNumber(value)
+            }
+          },
           series: metrics.map(metric => ({
             name: metric.name,
             type: 'line',
@@ -286,7 +390,7 @@ export default function BiChart({
       default:
         return baseOptions;
     }
-  }, [data, chartType, groupBy, metrics, title, showLegend, colorPalette]);
+  }, [data, chartType, groupBy, metrics, title, showLegend, colorPalette, effectiveDataZoom]);
 
   // Loading state
   if (loading) {
@@ -349,14 +453,37 @@ export default function BiChart({
     );
   }
 
+  // Click handler for drill-down
+  const handleChartClick = (params: any) => {
+    if (!onDrillDown) return;
+
+    // Get full category name from data
+    const categoryField = groupBy.length > 0 ? 'key_val' : Object.keys(data[0] || {})[0];
+    const dataIndex = params.dataIndex ?? 0;
+    const category = data[dataIndex]?.[categoryField] || params.name || '';
+    const value = params.value ?? 0;
+    const seriesName = params.seriesName || '';
+
+    logger.debug('Chart click:', { category, value, seriesName, dataIndex });
+    onDrillDown(category, value, seriesName);
+  };
+
+  const chartEvents = onDrillDown ? {
+    click: handleChartClick
+  } : undefined;
+
   return (
-    <div className="bg-white rounded-lg border overflow-hidden" style={{ height }}>
+    <div
+      className="bg-white rounded-lg border overflow-hidden"
+      style={{ height, cursor: onDrillDown ? 'pointer' : 'default' }}
+    >
       <ReactECharts
         echarts={echarts}
         option={chartOptions}
         style={{ height: '100%', width: '100%' }}
         opts={{ renderer: 'canvas' }}
         notMerge={true}
+        onEvents={chartEvents}
       />
     </div>
   );

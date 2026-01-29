@@ -10,6 +10,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { logger } from '../utils/logger';
 import TreeDataGrid from '../components/TreeDataGrid';
 import BiGridConfig from '../components/BiGridConfig';
 import {
@@ -97,7 +98,7 @@ export default function ReportPivotPage() {
           // Use saved config if it has data
           if (savedConfig.rows?.length > 0 || savedConfig.values?.length > 0) {
             initialConfig = savedConfig;
-            console.log('✅ Loaded SAVED pivot config from DB:', savedConfig);
+            logger.debug('✅ Loaded SAVED pivot config from DB:', savedConfig);
           } else {
             throw new Error('Empty config, use defaults');
           }
@@ -107,7 +108,7 @@ export default function ReportPivotPage() {
       } catch (err) {
         // Fallback: Auto-populate ALL fields in Columns for immediate flat table view
         // User can then remove fields, add grouping, split columns, etc.
-        console.log('⚠️ No saved config found, auto-populating all fields');
+        logger.debug('⚠️ No saved config found, auto-populating all fields');
 
         const allFieldsAsMetrics = schemaData.columns.map((col: ColumnInfo, idx: number) => ({
           id: `metric-${idx}`,

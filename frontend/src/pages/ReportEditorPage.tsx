@@ -10,6 +10,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Save, Loader2, Play, CheckCircle, XCircle, AlertCircle, Settings, Eye } from 'lucide-react';
+import { logger } from '../utils/logger';
 import BiGrid from '../components/BiGrid';
 import BiGridConfig from '../components/BiGridConfig';
 import TreeDataGrid from '../components/TreeDataGrid';
@@ -122,7 +123,7 @@ export default function ReportEditorPage() {
           setPivotConfig(savedConfig);
         }
       } catch (err) {
-        console.log('No saved pivot config');
+        logger.debug('No saved pivot config');
       }
 
     } catch (err) {
@@ -229,14 +230,14 @@ export default function ReportEditorPage() {
           if (configRes.ok) {
               const savedConfig = await configRes.json();
               if (savedConfig.rows?.length > 0 || savedConfig.columns?.length > 0 || savedConfig.values?.length > 0) {
-                  console.log("Loaded saved pivot config");
+                  logger.debug("Loaded saved pivot config");
                   setPivotConfig(savedConfig);
                   setShowPivotConfig(true);
                   return;
               }
           }
       } catch (e) {
-          console.log("No saved config found or error", e);
+          logger.debug("No saved config found or error", e);
       }
 
       // Fallback: Auto-populate Columns with ALL fields for immediate flat table view

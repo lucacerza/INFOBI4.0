@@ -18,6 +18,7 @@ import {
   LayoutDashboard, Search, X, Check, Loader2, UserPlus,
   ShieldAlert, ShieldCheck
 } from 'lucide-react';
+import { toast } from '../stores/toastStore';
 
 interface User {
   id: number;
@@ -94,7 +95,7 @@ export default function UsersPage() {
       if (reportsRes.ok) setReports(await reportsRes.json());
       if (dashboardsRes.ok) setDashboards(await dashboardsRes.json());
     } catch (err) {
-      console.error('Failed to load data:', err);
+      toast.error('Errore caricamento dati');
     } finally {
       setLoading(false);
     }
@@ -141,9 +142,9 @@ export default function UsersPage() {
         setAssignedDashboards(data.dashboard_ids || []);
       }
     } catch (err) {
-      console.error(err);
+      toast.error('Errore caricamento assegnazioni');
     }
-    
+
     setModalMode('assign');
     setShowModal(true);
   };
@@ -205,11 +206,11 @@ export default function UsersPage() {
         });
       }
       
+      toast.success('Salvato con successo');
       setShowModal(false);
       loadData();
     } catch (err) {
-      console.error(err);
-      alert('Errore nel salvataggio');
+      toast.error('Errore nel salvataggio');
     } finally {
       setSaving(false);
     }
@@ -225,13 +226,13 @@ export default function UsersPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.detail || 'Errore durante l\'eliminazione');
+        toast.error(err.detail || 'Errore durante l\'eliminazione');
         return;
       }
+      toast.success('Utente eliminato');
       loadData();
     } catch (err) {
-      console.error(err);
-      alert('Errore durante l\'eliminazione');
+      toast.error('Errore durante l\'eliminazione');
     }
   };
 

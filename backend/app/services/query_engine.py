@@ -28,6 +28,184 @@ _executor = ThreadPoolExecutor(max_workers=4)
 # Track which connections have been warmed this session
 _warmed_connections: set = set()
 
+
+def _sanitize_column_name(col: str) -> str:
+    """
+    Validate column name - only allow alphanumeric, underscore, and spaces.
+    Prevents SQL injection via column names.
+    """
+    return "".join(c for c in col if c.isalnum() or c in '_ ')
+
+
+def _build_safe_filter_clause(
+    filters: Dict[str, Any],
+    is_mssql: bool
+) -> tuple[str, Dict[str, Any]]:
+    """
+    Build a safe WHERE clause using parameterized queries.
+    Returns (where_sql, params_dict) where:
+    - where_sql uses :param_name placeholders
+    - params_dict contains the actual values
+
+    This prevents SQL injection by never interpolating user values directly.
+    """
+    if not filters:
+        return "", {}
+
+    conditions = []
+    params = {}
+    param_counter = 0
+
+    for field, filter_def in filters.items():
+        # Sanitize column name
+        clean_field = _sanitize_column_name(field)
+        col = f'[{clean_field}]' if is_mssql else f'"{clean_field}"'
+
+        filter_type = filter_def.get('type', '')
+        value = filter_def.get('value')
+
+        if filter_type == 'contains':
+            param_name = f"p{param_counter}"
+            conditions.append(f"{col} LIKE :{param_name}")
+            params[param_name] = f"%{value}%"
+            param_counter += 1
+
+        elif filter_type == 'equals':
+            param_name = f"p{param_counter}"
+            conditions.append(f"{col} = :{param_name}")
+            params[param_name] = value
+            param_counter += 1
+
+        elif filter_type == 'notEqual':
+            param_name = f"p{param_counter}"
+            conditions.append(f"{col} != :{param_name}")
+            params[param_name] = value
+            param_counter += 1
+
+        elif filter_type == 'greaterThan':
+            param_name = f"p{param_counter}"
+            conditions.append(f"{col} > :{param_name}")
+            params[param_name] = value
+            param_counter += 1
+
+        elif filter_type == 'lessThan':
+            param_name = f"p{param_counter}"
+            conditions.append(f"{col} < :{param_name}")
+            params[param_name] = value
+            param_counter += 1
+
+        elif filter_type == 'greaterThanOrEqual':
+            param_name = f"p{param_counter}"
+            conditions.append(f"{col} >= :{param_name}")
+            params[param_name] = value
+            param_counter += 1
+
+        elif filter_type == 'lessThanOrEqual':
+            param_name = f"p{param_counter}"
+            conditions.append(f"{col} <= :{param_name}")
+            params[param_name] = value
+            param_counter += 1
+
+        elif filter_type == 'isNotNull':
+            conditions.append(f"{col} IS NOT NULL")
+
+        elif filter_type == 'isNull':
+            conditions.append(f"{col} IS NULL")
+
+    if conditions:
+        return "WHERE " + " AND ".join(conditions), params
+    return "", {}
+
+
+def _build_drill_filter_clause(
+    filter_model: Dict[str, Any],
+    group_keys: List[Any],
+    row_group_cols: List[str],
+    is_mssql: bool
+) -> tuple[List[str], Dict[str, Any]]:
+    """
+    Build safe WHERE clause conditions for drill-down queries.
+    Returns (conditions_list, params_dict) where:
+    - conditions_list uses :param_name placeholders
+    - params_dict contains the actual values
+
+    This handles both parent path filters (groupKeys) and UI filters (filterModel).
+    """
+    conditions = []
+    params = {}
+    param_counter = 0
+
+    # 1. Parent Path Filters (Drill-Down constraints)
+    for idx, key in enumerate(group_keys):
+        parent_col = row_group_cols[idx]
+        clean_col = _sanitize_column_name(parent_col)
+        col_ref = f'[{clean_col}]' if is_mssql else f'"{clean_col}"'
+
+        param_name = f"gk{param_counter}"
+        conditions.append(f"{col_ref} = :{param_name}")
+        params[param_name] = key
+        param_counter += 1
+
+    # 2. UI Filter Model
+    for col, filter_def in filter_model.items():
+        clean_col = _sanitize_column_name(col)
+        col_ref = f'[{clean_col}]' if is_mssql else f'"{clean_col}"'
+
+        # filter_def has .filter and .type attributes (from PivotDrillRequest schema)
+        filter_type = filter_def.type if hasattr(filter_def, 'type') else filter_def.get('type', '')
+        value = filter_def.filter if hasattr(filter_def, 'filter') else filter_def.get('filter')
+
+        if filter_type == 'contains':
+            param_name = f"f{param_counter}"
+            conditions.append(f"{col_ref} LIKE :{param_name}")
+            params[param_name] = f"%{value}%"
+            param_counter += 1
+
+        elif filter_type == 'equals':
+            param_name = f"f{param_counter}"
+            conditions.append(f"{col_ref} = :{param_name}")
+            params[param_name] = value
+            param_counter += 1
+
+        elif filter_type == 'notEqual':
+            param_name = f"f{param_counter}"
+            conditions.append(f"{col_ref} != :{param_name}")
+            params[param_name] = value
+            param_counter += 1
+
+        elif filter_type == 'greaterThan':
+            param_name = f"f{param_counter}"
+            conditions.append(f"{col_ref} > :{param_name}")
+            params[param_name] = value
+            param_counter += 1
+
+        elif filter_type == 'lessThan':
+            param_name = f"f{param_counter}"
+            conditions.append(f"{col_ref} < :{param_name}")
+            params[param_name] = value
+            param_counter += 1
+
+        elif filter_type == 'greaterThanOrEqual':
+            param_name = f"f{param_counter}"
+            conditions.append(f"{col_ref} >= :{param_name}")
+            params[param_name] = value
+            param_counter += 1
+
+        elif filter_type == 'lessThanOrEqual':
+            param_name = f"f{param_counter}"
+            conditions.append(f"{col_ref} <= :{param_name}")
+            params[param_name] = value
+            param_counter += 1
+
+        elif filter_type == 'isNotNull':
+            conditions.append(f"{col_ref} IS NOT NULL")
+
+        elif filter_type == 'isNull':
+            conditions.append(f"{col_ref} IS NULL")
+
+    return conditions, params
+
+
 class QueryEngine:
     """Execute queries and return Arrow IPC format"""
 
@@ -65,6 +243,67 @@ class QueryEngine:
         engine = get_engine(db_type, config)
         with engine.connect() as conn:
             return pl.read_database(query, connection=conn)
+
+    @staticmethod
+    def _execute_df_with_params_sync(
+        db_type: str,
+        config: dict,
+        query: str,
+        params: Dict[str, Any]
+    ) -> pl.DataFrame:
+        """
+        Execute parameterized query and return Polars DataFrame.
+        Uses SQLAlchemy text() with bound parameters for SQL injection safety.
+        """
+        engine = get_engine(db_type, config)
+        with engine.connect() as conn:
+            if params:
+                # Use parameterized query
+                result = conn.execute(text(query), params)
+            else:
+                # No params, use regular execution
+                result = conn.execute(text(query))
+
+            # Convert to Polars DataFrame
+            rows = result.fetchall()
+            columns = list(result.keys())
+
+            if not rows:
+                # Return empty DataFrame with correct schema
+                return pl.DataFrame(schema={col: pl.Utf8 for col in columns})
+
+            # Build DataFrame from rows
+            data = {col: [row[i] for row in rows] for i, col in enumerate(columns)}
+            return pl.DataFrame(data)
+
+    @staticmethod
+    def _execute_arrow_with_params_sync(
+        db_type: str,
+        config: dict,
+        query: str,
+        params: Dict[str, Any]
+    ) -> pa.Table:
+        """
+        Execute parameterized query and return Arrow Table.
+        Uses SQLAlchemy text() with bound parameters for SQL injection safety.
+        """
+        engine = get_engine(db_type, config)
+        with engine.connect() as conn:
+            if params:
+                result = conn.execute(text(query), params)
+            else:
+                result = conn.execute(text(query))
+
+            rows = result.fetchall()
+            columns = list(result.keys())
+
+            if not rows:
+                # Return empty table
+                return pa.table({col: pa.array([], type=pa.string()) for col in columns})
+
+            # Build Arrow table from rows
+            data = {col: [row[i] for row in rows] for i, col in enumerate(columns)}
+            return pa.table(data)
 
     @staticmethod
     async def execute_query(
@@ -221,41 +460,14 @@ class QueryEngine:
                 group_by_sql = ""
                 order_by_sql = ""
             
-            # Build WHERE clause from filters
-            where_sql = ""
-            if filters:
-                conditions = []
-                for field, filter_def in filters.items():
-                    col = f'[{field}]' if is_mssql else f'"{field}"'
-                    if filter_def.get('type') == 'contains':
-                        conditions.append(f"{col} LIKE '%{filter_def['value']}%'")
-                    elif filter_def.get('type') == 'equals':
-                        conditions.append(f"{col} = '{filter_def['value']}'")
-                    elif filter_def.get('type') == 'greaterThan':
-                        conditions.append(f"{col} > {filter_def['value']}")
-                    elif filter_def.get('type') == 'lessThan':
-                        conditions.append(f"{col} < {filter_def['value']}")
-                    elif filter_def.get('type') == 'greaterThanOrEqual':
-                        conditions.append(f"{col} >= {filter_def['value']}")
-                    elif filter_def.get('type') == 'lessThanOrEqual':
-                        conditions.append(f"{col} <= {filter_def['value']}")
-                    elif filter_def.get('type') == 'notEqual':
-                        conditions.append(f"{col} != '{filter_def['value']}'")
-                    elif filter_def.get('type') == 'isNotNull':
-                        conditions.append(f"{col} IS NOT NULL")
-                    elif filter_def.get('type') == 'isNull':
-                        conditions.append(f"{col} IS NULL")
+            # Build WHERE clause from filters (using parameterized queries for safety)
+            where_sql, filter_params = _build_safe_filter_clause(filters, is_mssql)
 
-                if conditions:
-                    where_sql = "WHERE " + " AND ".join(conditions)
-            
             # Build LIMIT clause for preview mode
-            limit_sql = ""
             if limit:
                 if is_mssql:
-                    limit_sql = f"TOP {limit}"
                     sql = f"""
-                        SELECT {limit_sql} {', '.join(select_parts)}
+                        SELECT TOP {int(limit)} {', '.join(select_parts)}
                         FROM ({base_query}) AS base_data
                         {where_sql}
                         {group_by_sql}
@@ -268,37 +480,38 @@ class QueryEngine:
                         {where_sql}
                         {group_by_sql}
                         {order_by_sql}
-                        LIMIT {limit}
+                        LIMIT {int(limit)}
                     """
             else:
-                 sql = f"""
+                sql = f"""
                     SELECT {', '.join(select_parts)}
                     FROM ({base_query}) AS base_data
                     {where_sql}
                     {group_by_sql}
                     {order_by_sql}
                 """
-            
+
             logger.info(f"Pivot SQL: {sql[:500]}...")
-            
-            # Execute
+
+            # Execute with parameterized query for SQL injection safety
             loop = asyncio.get_event_loop()
             arrow_table = await loop.run_in_executor(
                 _executor,
-                QueryEngine._execute_query_sync,
+                QueryEngine._execute_arrow_with_params_sync,
                 db_type,
                 config,
-                sql
+                sql,
+                filter_params
             )
             
             # Serialize to IPC
             sink = BytesIO()
             with ipc.new_stream(sink, arrow_table.schema) as writer:
                 writer.write_table(arrow_table)
-            
-            elapsed = (time.perf_counter() - start) * 1000
+
+            elapsed = (time.perf_counter() - start_total) * 1000
             arrow_bytes = sink.getvalue()
-            
+
             logger.info(f"Pivot executed: {arrow_table.num_rows} rows in {elapsed:.1f}ms")
             
             return arrow_bytes, arrow_table.num_rows, elapsed
@@ -453,66 +666,52 @@ class QueryEngine:
                      select_parts = ["*"]
 
                  base_select = f"SELECT {', '.join(select_parts)} FROM ({base_query}) AS base"
-                 
-                 # Apply filters
-                 where_clauses = []
-                 for col, filter_def in request.filterModel.items():
-                    clean_col = "".join(c for c in col if c.isalnum() or c in '_')
-                    val = filter_def.filter
-                    if isinstance(val, str): val = val.replace("'", "''")
-                    
-                    if filter_def.type == 'contains': where_clauses.append(f"{clean_col} LIKE '%{val}%'")
-                    elif filter_def.type == 'equals':
-                        if isinstance(val, str): where_clauses.append(f"{clean_col} = '{val}'")
-                        else: where_clauses.append(f"{clean_col} = {val}")
-                    elif filter_def.type == 'notEqual':
-                        if isinstance(val, str): where_clauses.append(f"{clean_col} != '{val}'")
-                        else: where_clauses.append(f"{clean_col} != {val}")
-                    elif filter_def.type == 'greaterThan':
-                        where_clauses.append(f"{clean_col} > {val}")
-                    elif filter_def.type == 'greaterThanOrEqual':
-                        where_clauses.append(f"{clean_col} >= {val}")
-                    elif filter_def.type == 'lessThan':
-                        where_clauses.append(f"{clean_col} < {val}")
-                    elif filter_def.type == 'lessThanOrEqual':
-                        where_clauses.append(f"{clean_col} <= {val}")
-                    elif filter_def.type == 'isNotNull':
-                        where_clauses.append(f"{clean_col} IS NOT NULL")
-                    elif filter_def.type == 'isNull':
-                        where_clauses.append(f"{clean_col} IS NULL")
-                 
-                 if where_clauses:
-                     base_select += " WHERE " + " AND ".join(where_clauses)
-                 
-                 # Apply Sorting
+
+                 # Apply filters using parameterized queries (SQL injection safe)
+                 filter_conditions, filter_params = _build_drill_filter_clause(
+                     request.filterModel, [], [], is_mssql
+                 )
+
+                 if filter_conditions:
+                     base_select += " WHERE " + " AND ".join(filter_conditions)
+
+                 # Apply Sorting (column names are sanitized)
                  order_sql = ""
                  if request.sortModel:
                     order_clauses = []
                     for sort in request.sortModel:
-                        clean_col = "".join(c for c in sort.colId if c.isalnum() or c in '_')
+                        clean_col = _sanitize_column_name(sort.colId)
                         direction = "DESC" if sort.sort == "desc" else "ASC"
                         order_clauses.append(f"{clean_col} {direction}")
                     order_sql = " ORDER BY " + ", ".join(order_clauses)
 
                  # Apply Pagination
-                 start_row = request.startRow or 0
-                 end_row = request.endRow or 100
+                 start_row = int(request.startRow or 0)
+                 end_row = int(request.endRow or 100)
                  limit = end_row - start_row
-                 
-                 full_query = ""
+
                  if is_mssql:
                      if not order_sql:
                          order_sql = "ORDER BY (SELECT NULL)"
-                     # SQL Server OFFSET FETCH
                      full_query = f"{base_select} {order_sql} OFFSET {start_row} ROWS FETCH NEXT {limit} ROWS ONLY"
                  else:
-                     # Standard Limit/Offset
                      full_query = f"{base_select} {order_sql} LIMIT {limit} OFFSET {start_row}"
 
+                 # Execute with parameterized query
                  engine = get_engine(db_type, config)
                  with engine.connect() as conn:
-                     data_df = pl.read_database(full_query, connection=conn)
-                 
+                     if filter_params:
+                         result = conn.execute(text(full_query), filter_params)
+                         rows_data = result.fetchall()
+                         columns = list(result.keys())
+                         if rows_data:
+                             data = {col: [row[i] for row in rows_data] for i, col in enumerate(columns)}
+                             data_df = pl.DataFrame(data)
+                         else:
+                             data_df = pl.DataFrame()
+                     else:
+                         data_df = pl.read_database(full_query, connection=conn)
+
                  rows = data_df.to_dicts()
                  elapsed = (time.perf_counter() - start) * 1000
                  return rows, len(rows), elapsed
@@ -522,49 +721,17 @@ class QueryEngine:
                  return [], 0, 0
             
             group_col = request.rowGroupCols[current_level] # The column to group by NOW
-            
-            # 2. Build WHERE clauses
-            where_clauses = []
-            
-            # 2a. Parent Path Filters (The "Drill-Down" constraints)
-            # e.g. groupKeys=['Europe'] -> WHERE Region='Europe'
-            for idx, key in enumerate(request.groupKeys):
-                parent_col = request.rowGroupCols[idx]
-                val = key
-                if isinstance(val, str):
-                   val = val.replace("'", "''")
-                   where_clauses.append(f"{parent_col} = '{val}'")
-                else:
-                   where_clauses.append(f"{parent_col} = {val}")
-            
-            # 2b. Global filters from UI
-            for col, filter_def in request.filterModel.items():
-                clean_col = "".join(c for c in col if c.isalnum() or c in '_')
-                val = filter_def.filter
-                if isinstance(val, str):
-                    val = val.replace("'", "''")
-                if filter_def.type == 'contains':
-                    where_clauses.append(f"{clean_col} LIKE '%{val}%'")
-                elif filter_def.type == 'equals':
-                     if isinstance(val, str): where_clauses.append(f"{clean_col} = '{val}'")
-                     else: where_clauses.append(f"{clean_col} = {val}")
-                elif filter_def.type == 'notEqual':
-                    if isinstance(val, str): where_clauses.append(f"{clean_col} != '{val}'")
-                    else: where_clauses.append(f"{clean_col} != {val}")
-                elif filter_def.type == 'greaterThan':
-                    where_clauses.append(f"{clean_col} > {val}")
-                elif filter_def.type == 'greaterThanOrEqual':
-                    where_clauses.append(f"{clean_col} >= {val}")
-                elif filter_def.type == 'lessThan':
-                    where_clauses.append(f"{clean_col} < {val}")
-                elif filter_def.type == 'lessThanOrEqual':
-                    where_clauses.append(f"{clean_col} <= {val}")
-                elif filter_def.type == 'isNotNull':
-                    where_clauses.append(f"{clean_col} IS NOT NULL")
-                elif filter_def.type == 'isNull':
-                    where_clauses.append(f"{clean_col} IS NULL")
-            
-            where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+            is_mssql_where = db_type == "mssql"
+
+            # 2. Build WHERE clauses using parameterized queries (SQL injection safe)
+            where_conditions, filter_params = _build_drill_filter_clause(
+                request.filterModel,
+                request.groupKeys,
+                request.rowGroupCols,
+                is_mssql_where
+            )
+
+            where_sql = " WHERE " + " AND ".join(where_conditions) if where_conditions else ""
             
             # 3. Build Select & Aggregations
             select_parts = [f"{group_col} as key_val"] # Key column used for tree structure
@@ -696,10 +863,20 @@ class QueryEngine:
                     LIMIT {limit_val} OFFSET {offset_val}
                  """
 
-            # Execute
+            # Execute with parameterized query
             engine = get_engine(db_type, config)
             with engine.connect() as conn:
-                data_df = pl.read_database(full_query, connection=conn)
+                if filter_params:
+                    result = conn.execute(text(full_query), filter_params)
+                    rows_data = result.fetchall()
+                    columns = list(result.keys())
+                    if rows_data:
+                        data = {col: [row[i] for row in rows_data] for i, col in enumerate(columns)}
+                        data_df = pl.DataFrame(data)
+                    else:
+                        data_df = pl.DataFrame()
+                else:
+                    data_df = pl.read_database(full_query, connection=conn)
             rows = data_df.to_dicts()
             
             elapsed = (time.perf_counter() - start) * 1000

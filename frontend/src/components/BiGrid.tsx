@@ -11,6 +11,7 @@
  */
 import { useEffect, useRef, useCallback, useState } from 'react';
 import debounce from 'lodash.debounce';
+import { logger } from '../utils/logger';
 import { Loader2, RefreshCw, ChevronRight, ChevronDown } from 'lucide-react';
 import * as arrow from 'apache-arrow';
 import { SkeletonTable } from './SkeletonLoader';
@@ -475,11 +476,11 @@ export default function BiGrid({
     // Execute pivot ONLY if schema is loaded AND config is not empty
     // Don't waste time querying DB when user hasn't selected anything yet
     if (schema && (defaultGroupBy.length > 0 || defaultSplitBy.length > 0 || defaultMetrics.length > 0)) {
-      console.log('🔵 [BiGrid] Executing pivot with config:', newConfig);
+      logger.debug('🔵 [BiGrid] Executing pivot with config:', newConfig);
       executePivot(newConfig);
     } else if (schema && !hasLoadedSavedConfig.current) {
       // Schema loaded but config empty - show empty state
-      console.log('⚪ [BiGrid] Config is empty, showing empty state');
+      logger.debug('⚪ [BiGrid] Config is empty, showing empty state');
       setPivotResult({
         data: [],
         columns: [],
@@ -511,7 +512,7 @@ export default function BiGrid({
       // AUTO-LOAD: If no config provided via props OR if we are in Viewer mode (no onConfigChange)
       // we prefer the saved config over the SQL defaults passed as props.
       if ((defaultGroupBy.length === 0 && defaultSplitBy.length === 0 && defaultMetrics.length === 0) || !onConfigChange) {
-         console.log('🔵 [BiGrid] Auto-loading saved config (Viewer mode or empty props)...');
+         logger.debug('🔵 [BiGrid] Auto-loading saved config (Viewer mode or empty props)...');
          loadSavedConfig();
       }
 
@@ -551,7 +552,7 @@ export default function BiGrid({
               filters: {}
           };
           
-          console.log('🔵 [BiGrid] Auto-loaded saved config:', newConfig);
+          logger.debug('🔵 [BiGrid] Auto-loaded saved config:', newConfig);
           hasLoadedSavedConfig.current = true;
           setCurrentConfig(newConfig);
           executePivot(newConfig);
@@ -567,7 +568,7 @@ export default function BiGrid({
 
     try {
       const t0 = performance.now();
-      console.log('🔵 [PERF] BiGrid START', { config });
+      logger.debug('🔵 [PERF] BiGrid START', { config });
 
       // Call backend with multi-level split_by
       const t1 = performance.now();
@@ -598,7 +599,7 @@ export default function BiGrid({
         body: JSON.stringify(requestBody)
       });
       const t2 = performance.now();
-      console.log(`🟡 [PERF] Backend fetch: ${(t2-t1).toFixed(0)}ms`);
+      logger.debug(`🟡 [PERF] Backend fetch: ${(t2-t1).toFixed(0)}ms`);
 
       if (!response.ok) throw new Error('Pivot request failed');
 
@@ -610,11 +611,11 @@ export default function BiGrid({
       const t3 = performance.now();
       const arrayBuffer = await response.arrayBuffer();
       const t4 = performance.now();
-      console.log(`🟡 [PERF] Arrow download: ${(t4-t3).toFixed(0)}ms, size: ${(arrayBuffer.byteLength/1024).toFixed(1)}KB`);
+      logger.debug(`🟡 [PERF] Arrow download: ${(t4-t3).toFixed(0)}ms, size: ${(arrayBuffer.byteLength/1024).toFixed(1)}KB`);
 
       const table = arrow.tableFromIPC(arrayBuffer);
       const t5 = performance.now();
-      console.log(`🟡 [PERF] Arrow parse IPC: ${(t5-t4).toFixed(0)}ms, rows: ${table.numRows}`);
+      logger.debug(`🟡 [PERF] Arrow parse IPC: ${(t5-t4).toFixed(0)}ms, rows: ${table.numRows}`);
 
       // Convert to plain objects - OPTIMIZED: use table.toArray() which is much faster
       const data = table.toArray().map(row => {
@@ -625,7 +626,7 @@ export default function BiGrid({
         return obj;
       });
       const t6 = performance.now();
-      console.log(`🟡 [PERF] Arrow to objects: ${(t6-t5).toFixed(0)}ms`);
+      logger.debug(`🟡 [PERF] Arrow to objects: ${(t6-t5).toFixed(0)}ms`);
 
       // Build pivot using engine
       const engine = new PivotEngine(data);
@@ -636,8 +637,8 @@ export default function BiGrid({
       const t7 = performance.now();
       const result = engine.generate();
       const t8 = performance.now();
-      console.log(`🟡 [PERF] PivotEngine generate: ${(t8-t7).toFixed(0)}ms`);
-      console.log('🔵 [BiGrid] PivotEngine result:', {
+      logger.debug(`🟡 [PERF] PivotEngine generate: ${(t8-t7).toFixed(0)}ms`);
+      logger.debug('🔵 [BiGrid] PivotEngine result:', {
         grouping: result.grouping,
         isPivoted: result.isPivoted,
         dataRows: result.data.length,
@@ -650,7 +651,7 @@ export default function BiGrid({
 
       setPivotResult(result);
       const t9 = performance.now();
-      console.log(`🟡 [PERF] React setState: ${(t9-t8).toFixed(0)}ms`);
+      logger.debug(`🟡 [PERF] React setState: ${(t9-t8).toFixed(0)}ms`);
 
       const rows = parseInt(rowCount || '0');
       setStats({
@@ -665,8 +666,8 @@ export default function BiGrid({
       }
 
       const tTotal = performance.now();
-      console.log(`🟢 [PERF] TOTAL BiGrid render: ${(tTotal-t0).toFixed(0)}ms`);
-      console.log(`📊 [PERF] Breakdown: Fetch=${(t2-t1).toFixed(0)}ms | Download=${(t4-t3).toFixed(0)}ms | Parse=${(t5-t4).toFixed(0)}ms | Convert=${(t6-t5).toFixed(0)}ms | Engine=${(t8-t7).toFixed(0)}ms`);
+      logger.debug(`🟢 [PERF] TOTAL BiGrid render: ${(tTotal-t0).toFixed(0)}ms`);
+      logger.debug(`📊 [PERF] Breakdown: Fetch=${(t2-t1).toFixed(0)}ms | Download=${(t4-t3).toFixed(0)}ms | Parse=${(t5-t4).toFixed(0)}ms | Convert=${(t6-t5).toFixed(0)}ms | Engine=${(t8-t7).toFixed(0)}ms`);
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -865,7 +866,7 @@ function renderBiGrid(
   // Build grouped data
   const groupedData = grouping.length > 0 ? buildGroupedData(data, grouping, expandedRows) : data;
 
-  console.log('🔵 [BiGrid] Render:', {
+  logger.debug('🔵 [BiGrid] Render:', {
     grouping,
     dataRows: data.length,
     groupedRows: groupedData.length,

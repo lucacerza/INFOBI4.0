@@ -24,7 +24,7 @@ interface Report {
 export default function ReportViewerPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuthStore();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
   const reportId = parseInt(id || '0');
   
   const [report, setReport] = useState<Report | null>(null);

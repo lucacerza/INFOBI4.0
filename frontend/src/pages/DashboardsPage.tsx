@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { dashboardsApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 import { LayoutDashboard, Plus, Loader2, Trash2 } from 'lucide-react';
+import { toast } from '../stores/toastStore';
 
 export default function DashboardsPage() {
   const [dashboards, setDashboards] = useState<any[]>([]);
@@ -10,7 +11,7 @@ export default function DashboardsPage() {
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
   const { user } = useAuthStore();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
   
   useEffect(() => {
     loadDashboards();
@@ -27,16 +28,26 @@ export default function DashboardsPage() {
   
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    await dashboardsApi.create({ name });
-    setName('');
-    setShowForm(false);
-    loadDashboards();
+    try {
+      await dashboardsApi.create({ name });
+      toast.success('Dashboard creata');
+      setName('');
+      setShowForm(false);
+      loadDashboards();
+    } catch (err) {
+      toast.error('Errore creazione dashboard');
+    }
   };
-  
+
   const handleDelete = async (id: number) => {
     if (!confirm('Eliminare questa dashboard?')) return;
-    await dashboardsApi.delete(id);
-    loadDashboards();
+    try {
+      await dashboardsApi.delete(id);
+      toast.success('Dashboard eliminata');
+      loadDashboards();
+    } catch (err) {
+      toast.error('Errore eliminazione dashboard');
+    }
   };
   
   if (loading) {

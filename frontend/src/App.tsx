@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
+import { ToastContainer } from './components/Toast';
 import ReportsPage from './pages/ReportsPage';
 import ReportViewerPage from './pages/ReportViewerPage';
 import ReportPivotPage from './pages/ReportPivotPage';
@@ -82,6 +83,7 @@ function App() {
   }
   
   return (
+    <>
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -115,6 +117,8 @@ function App() {
         </Route>
       </Routes>
     </BrowserRouter>
+    <ToastContainer />
+    </>
   );
 }
 
