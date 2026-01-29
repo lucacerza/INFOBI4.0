@@ -450,6 +450,15 @@ function WidgetCard({
 
           {canEdit && (
             <>
+              {/* Settings button */}
+              <button
+                type="button"
+                onClick={() => setShowSettings(true)}
+                className="p-1 hover:bg-slate-100 rounded text-slate-500"
+                title="Configura Widget"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
               {/* Toggle between chart and grid */}
               <button
                 type="button"
@@ -508,6 +517,247 @@ function WidgetCard({
             previewMode={false}
           />
         )}
+      </div>
+
+      {/* Widget Settings Modal */}
+      {showSettings && (
+        <WidgetSettingsModal
+          widget={widget}
+          onSave={(newConfig) => {
+            onConfigChange(newConfig);
+            setShowSettings(false);
+          }}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Widget Settings Modal - Configure groupBy, metrics, splitBy per widget
+function WidgetSettingsModal({
+  widget,
+  onSave,
+  onClose
+}: {
+  widget: Widget;
+  onSave: (config: Widget['config']) => void;
+  onClose: () => void;
+}) {
+  const [schema, setSchema] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [config, setConfig] = useState<Widget['config']>(widget.config || {});
+
+  const getToken = () => localStorage.getItem('token');
+
+  // Load report schema
+  useEffect(() => {
+    const loadSchema = async () => {
+      try {
+        const res = await fetch(`/api/pivot/${widget.report_id}/schema`, {
+          headers: { 'Authorization': `Bearer ${getToken()}` }
+        });
+        if (res.ok) {
+          setSchema(await res.json());
+        }
+      } catch (err) {
+        console.error('Error loading schema:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadSchema();
+  }, [widget.report_id]);
+
+  const stringColumns = schema?.columns?.filter((c: any) => c.type === 'string') || [];
+  const numericColumns = schema?.columns?.filter((c: any) => c.type === 'number') || [];
+
+  const toggleGroupBy = (field: string) => {
+    const current = config.groupBy || [];
+    if (current.includes(field)) {
+      setConfig({ ...config, groupBy: current.filter(f => f !== field) });
+    } else {
+      setConfig({ ...config, groupBy: [...current, field] });
+    }
+  };
+
+  const toggleMetric = (field: string) => {
+    const current = config.metrics || [];
+    const exists = current.find((m: any) => m.field === field);
+    if (exists) {
+      setConfig({ ...config, metrics: current.filter((m: any) => m.field !== field) });
+    } else {
+      setConfig({
+        ...config,
+        metrics: [...current, { id: `metric-${Date.now()}`, field, name: field, aggregation: 'SUM' }]
+      });
+    }
+  };
+
+  const toggleSplitBy = (field: string) => {
+    const current = config.splitBy || [];
+    if (current.includes(field)) {
+      setConfig({ ...config, splitBy: current.filter(f => f !== field) });
+    } else {
+      setConfig({ ...config, splitBy: [...current, field] });
+    }
+  };
+
+  const updateMetricAggregation = (field: string, aggregation: string) => {
+    const current = config.metrics || [];
+    setConfig({
+      ...config,
+      metrics: current.map((m: any) =>
+        m.field === field ? { ...m, aggregation } : m
+      )
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl w-full max-w-lg max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b">
+          <h2 className="font-semibold">Configura Widget: {widget.title}</h2>
+          <button type="button" onClick={onClose} className="p-1 hover:bg-slate-100 rounded" title="Chiudi">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-auto p-4 space-y-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+            </div>
+          ) : (
+            <>
+              {/* Group By Section */}
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Group By (Raggruppamento)
+                </label>
+                <p className="text-xs text-slate-500 mb-2">
+                  Seleziona i campi per raggruppare i dati. L'ordine determina la gerarchia del drill-down.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {stringColumns.map((col: any) => (
+                    <button
+                      key={col.name}
+                      type="button"
+                      onClick={() => toggleGroupBy(col.name)}
+                      className={`px-3 py-1.5 rounded-full text-sm border transition ${
+                        (config.groupBy || []).includes(col.name)
+                          ? 'bg-blue-100 border-blue-300 text-blue-700'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
+                      }`}
+                    >
+                      {(config.groupBy || []).includes(col.name) && (
+                        <span className="mr-1 font-bold">
+                          {(config.groupBy || []).indexOf(col.name) + 1}.
+                        </span>
+                      )}
+                      {col.label || col.name}
+                    </button>
+                  ))}
+                </div>
+                {(config.groupBy || []).length > 0 && (
+                  <p className="text-xs text-blue-600 mt-2">
+                    Ordine drill-down: {(config.groupBy || []).join(' → ')}
+                  </p>
+                )}
+              </div>
+
+              {/* Metrics Section */}
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Metriche (Valori)
+                </label>
+                <p className="text-xs text-slate-500 mb-2">
+                  Seleziona i campi numerici da aggregare.
+                </p>
+                <div className="space-y-2">
+                  {numericColumns.map((col: any) => {
+                    const metric = (config.metrics || []).find((m: any) => m.field === col.name);
+                    const isSelected = !!metric;
+                    return (
+                      <div key={col.name} className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleMetric(col.name)}
+                          className={`flex-1 px-3 py-2 rounded-lg text-sm border text-left transition ${
+                            isSelected
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                              : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
+                          }`}
+                        >
+                          {col.label || col.name}
+                        </button>
+                        {isSelected && (
+                          <select
+                            value={metric?.aggregation || 'SUM'}
+                            onChange={(e) => updateMetricAggregation(col.name, e.target.value)}
+                            className="px-2 py-2 border rounded-lg text-sm"
+                            title="Tipo aggregazione"
+                          >
+                            <option value="SUM">Somma</option>
+                            <option value="AVG">Media</option>
+                            <option value="COUNT">Conteggio</option>
+                            <option value="MIN">Minimo</option>
+                            <option value="MAX">Massimo</option>
+                          </select>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Split By Section (optional pivot) */}
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Split By (Pivot - opzionale)
+                </label>
+                <p className="text-xs text-slate-500 mb-2">
+                  Dividi le metriche per questo campo (es. per Anno).
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {stringColumns.map((col: any) => (
+                    <button
+                      key={col.name}
+                      type="button"
+                      onClick={() => toggleSplitBy(col.name)}
+                      className={`px-3 py-1.5 rounded-full text-sm border transition ${
+                        (config.splitBy || []).includes(col.name)
+                          ? 'bg-purple-100 border-purple-300 text-purple-700'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
+                      }`}
+                    >
+                      {col.label || col.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg"
+          >
+            Annulla
+          </button>
+          <button
+            type="button"
+            onClick={() => onSave(config)}
+            disabled={loading}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
+          >
+            Salva
+          </button>
+        </div>
       </div>
     </div>
   );
