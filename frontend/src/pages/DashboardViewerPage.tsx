@@ -1,15 +1,17 @@
 /**
  * Dashboard Viewer with Widget Management
  * Supports: TreeDataGrid (tabelle) and BiChart (grafici)
+ * Drill-down: Click on chart → filters all widgets of same report
  */
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { useDashboardStore } from '../stores/dashboardStore';
 import TreeDataGrid from '../components/TreeDataGrid';
 import BiChart, { ChartType, ChartTypeSelector } from '../components/BiChart';
 import {
   ArrowLeft, Loader2, Plus, X, Trash2, GripVertical,
-  Table, BarChart3, Settings
+  Table, BarChart3, Settings, Filter
 } from 'lucide-react';
 import { reportsApi, pivotApi } from '../services/api';
 import { toast } from '../stores/toastStore';
@@ -35,6 +37,15 @@ interface Report {
 export default function DashboardViewerPage() {
   const { id } = useParams();
   const { user } = useAuthStore();
+  const {
+    filtersByReport,
+    setFilter,
+    removeFilter,
+    clearFiltersForReport,
+    clearAllFilters,
+    setDashboard: setStoreDashboard,
+    getFilterModelForReport
+  } = useDashboardStore();
   const isSuperuser = user?.role === 'superuser';
   const isAdminOrSuperuser = user?.role === 'admin' || user?.role === 'superuser';
   const dashboardId = parseInt(id || '0');
@@ -48,6 +59,8 @@ export default function DashboardViewerPage() {
   const getToken = () => localStorage.getItem('token');
 
   useEffect(() => {
+    // Reset filters when changing dashboard
+    setStoreDashboard(dashboardId);
     loadDashboard();
     if (isAdminOrSuperuser) loadReports();
   }, [id]);
@@ -236,9 +249,34 @@ export default function DashboardViewerPage() {
     );
   }
 
-  // Available reports (not already in dashboard)
-  const usedReportIds = widgets.map(w => w.report_id);
-  const availableReports = reports.filter(r => !usedReportIds.includes(r.id));
+  // All reports available for adding (same report can be added multiple times as different widget types)
+  const availableReports = reports;
+
+  // Collect all active filters for display
+  const allActiveFilters = Object.entries(filtersByReport).flatMap(([reportId, filters]) =>
+    Object.entries(filters).map(([field, filter]) => ({
+      reportId: parseInt(reportId),
+      field,
+      ...filter
+    }))
+  );
+  const hasActiveFilters = allActiveFilters.length > 0;
+
+  // Drill-down handler: when user clicks on a chart element
+  // Supports multi-level drill-down: if groupBy[0] is already filtered, use groupBy[1], etc.
+  const handleDrillDown = (reportId: number, groupByFields: string[], category: string) => {
+    if (!category || category === 'N/A' || groupByFields.length === 0) return;
+
+    const existingFilters = filtersByReport[reportId] || {};
+
+    // Find the first groupBy field that isn't already filtered
+    const nextField = groupByFields.find(field => !existingFilters[field]);
+
+    if (nextField) {
+      setFilter(reportId, nextField, category, 'equals');
+    }
+    // If all groupBy fields are already filtered, do nothing (max depth reached)
+  };
 
   return (
     <div className="h-full flex flex-col bg-slate-100">
@@ -251,16 +289,51 @@ export default function DashboardViewerPage() {
           <h1 className="font-semibold text-slate-800">{dashboard.name}</h1>
         </div>
 
-        {isAdminOrSuperuser && (
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
-          >
-            <Plus className="w-4 h-4" />
-            Aggiungi Widget
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {hasActiveFilters && (
+            <button
+              onClick={clearAllFilters}
+              className="flex items-center gap-2 px-3 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm"
+            >
+              <X className="w-4 h-4" />
+              Rimuovi Filtri
+            </button>
+          )}
+          {isAdminOrSuperuser && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+            >
+              <Plus className="w-4 h-4" />
+              Aggiungi Widget
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Active Filters Bar */}
+      {hasActiveFilters && (
+        <div className="bg-blue-50 border-b border-blue-100 px-4 py-2 flex items-center gap-2 flex-wrap">
+          <Filter className="w-4 h-4 text-blue-500" />
+          <span className="text-sm text-blue-700 font-medium">Filtri attivi:</span>
+          {allActiveFilters.map((filter, idx) => (
+            <span
+              key={`${filter.reportId}-${filter.field}-${idx}`}
+              className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs"
+            >
+              <span className="font-medium">{filter.field}:</span> {String(filter.value)}
+              <button
+                type="button"
+                onClick={() => removeFilter(filter.reportId, filter.field)}
+                className="ml-1 hover:bg-blue-200 rounded-full p-0.5"
+                title="Rimuovi filtro"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 p-4 overflow-auto">
@@ -289,6 +362,8 @@ export default function DashboardViewerPage() {
                 onRemove={() => removeWidget(widget.id)}
                 onConfigChange={(config) => updateWidgetConfig(widget.id, config)}
                 onToggleType={() => toggleWidgetType(widget.id, widget.widget_type)}
+                filters={getFilterModelForReport(widget.report_id)}
+                onDrillDown={(value) => handleDrillDown(widget.report_id, widget.config?.groupBy || [], value)}
               />
             ))}
           </div>
@@ -313,16 +388,31 @@ function WidgetCard({
   canEdit,
   onRemove,
   onConfigChange,
-  onToggleType
+  onToggleType,
+  filters,
+  onDrillDown
 }: {
   widget: Widget;
   canEdit: boolean;
   onRemove: () => void;
   onConfigChange: (config: Widget['config']) => void;
   onToggleType: () => void;
+  filters: Record<string, any>;
+  onDrillDown: (value: string) => void;
 }) {
   const [showSettings, setShowSettings] = useState(false);
   const config = widget.config || {};
+
+  // Compute effective groupBy: skip fields that are already filtered (for drill-down)
+  const allGroupBy = config.groupBy || [];
+  const filteredFields = Object.keys(filters);
+  const effectiveGroupBy = allGroupBy.filter(field => !filteredFields.includes(field));
+
+  // For drill-down: if all groupBy fields are filtered, show original (max depth reached)
+  const displayGroupBy = effectiveGroupBy.length > 0 ? effectiveGroupBy : allGroupBy;
+
+  // Check if we can drill deeper
+  const canDrillDeeper = effectiveGroupBy.length > 0;
 
   // Validate widget has required data
   if (!widget.report_id) {
@@ -392,14 +482,17 @@ function WidgetCard({
           <BiChart
             reportId={widget.report_id}
             chartType={config.chartType || 'bar'}
-            groupBy={config.groupBy || []}
+            groupBy={displayGroupBy}
             metrics={config.metrics || []}
             splitBy={config.splitBy}
+            filters={filters}
             height="100%"
-            onDrillDown={(category, value, seriesName) => {
-              // TODO: Implement proper drill-down (filter or navigate)
-              alert(`Drill-down: ${category}\n${seriesName}: ${value.toLocaleString('it-IT')}`);
-            }}
+            onDrillDown={canDrillDeeper ? (category, _value, _seriesName) => {
+              // Drill-down: pass category, field logic handled by parent
+              if (category) {
+                onDrillDown(category);
+              }
+            } : undefined}
           />
         ) : (
           <TreeDataGrid
@@ -407,6 +500,11 @@ function WidgetCard({
             rowGroups={config.groupBy || []}
             valueCols={config.metrics || []}
             pivotCols={config.splitBy || []}
+            filters={Object.entries(filters).map(([field, f]: [string, any]) => ({
+              field,
+              type: f.type || 'equals',
+              value: f.filter
+            }))}
             previewMode={false}
           />
         )}
