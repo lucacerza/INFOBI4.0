@@ -15,14 +15,14 @@
     "@tanstack/react-virtual": "^3.13.17",
     "apache-arrow": "^15.0.0",
     "axios": "^1.6.7",
-    "echarts": "^5.5.0",
-    "echarts-for-react": "^3.0.2",
+    "echarts": "^5.6.0",
+    "echarts-for-react": "^3.0.6",
+    "lodash.debounce": "^4.0.8",
     "lucide-react": "^0.330.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.22.0",
-    "zustand": "^4.5.0",
-    "lodash.debounce": "^4.0.8"
+    "zustand": "^4.5.0"
   },
   "devDependencies": {
     "@types/lodash.debounce": "^4.0.9",
