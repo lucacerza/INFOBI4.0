@@ -144,8 +144,9 @@ class SortModel(BaseModel):
 
 class FilterDef(BaseModel):
     filterType: str = 'text'
-    type: str  # 'contains', 'equals', 'startsWith', etc
+    type: str  # 'contains', 'equals', 'startsWith', 'in', etc
     filter: Any         # Can be string or number
+    values: Optional[List[Any]] = None  # For 'in' filter type (multi-select)
 
 class HavingDef(BaseModel):
     """Defines a HAVING condition on an aggregated field"""

@@ -112,6 +112,24 @@ def _build_safe_filter_clause(
         elif filter_type == 'isNull':
             conditions.append(f"{col} IS NULL")
 
+        elif filter_type == 'in':
+            # Multi-value filter (from ListSlicer)
+            values = filter_def.get('values', [])
+            if isinstance(values, list) and len(values) > 0:
+                placeholders = []
+                for v in values:
+                    param_name = f"p{param_counter}"
+                    placeholders.append(f":{param_name}")
+                    params[param_name] = v
+                    param_counter += 1
+                conditions.append(f"{col} IN ({', '.join(placeholders)})")
+            elif value:
+                # Fallback to single value
+                param_name = f"p{param_counter}"
+                conditions.append(f"{col} = :{param_name}")
+                params[param_name] = value
+                param_counter += 1
+
     if conditions:
         return "WHERE " + " AND ".join(conditions), params
     return "", {}
@@ -202,6 +220,24 @@ def _build_drill_filter_clause(
 
         elif filter_type == 'isNull':
             conditions.append(f"{col_ref} IS NULL")
+
+        elif filter_type == 'in':
+            # Multi-value filter (from ListSlicer)
+            values = filter_def.values if hasattr(filter_def, 'values') else filter_def.get('values', [])
+            if isinstance(values, list) and len(values) > 0:
+                placeholders = []
+                for v in values:
+                    param_name = f"f{param_counter}"
+                    placeholders.append(f":{param_name}")
+                    params[param_name] = v
+                    param_counter += 1
+                conditions.append(f"{col_ref} IN ({', '.join(placeholders)})")
+            elif value:
+                # Fallback to single value
+                param_name = f"f{param_counter}"
+                conditions.append(f"{col_ref} = :{param_name}")
+                params[param_name] = value
+                param_counter += 1
 
     return conditions, params
 

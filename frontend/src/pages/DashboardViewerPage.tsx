@@ -9,9 +9,10 @@ import { useAuthStore } from '../stores/authStore';
 import { useDashboardStore } from '../stores/dashboardStore';
 import TreeDataGrid from '../components/TreeDataGrid';
 import BiChart, { ChartType, ChartTypeSelector } from '../components/BiChart';
+import { ListSlicer, DropdownSlicer } from '../components/slicers';
 import {
   ArrowLeft, Loader2, Plus, X, Trash2, GripVertical,
-  Table, BarChart3, Settings, Filter
+  Table, BarChart3, Settings, Filter, SlidersHorizontal
 } from 'lucide-react';
 import { reportsApi, pivotApi } from '../services/api';
 import { toast } from '../stores/toastStore';
@@ -20,12 +21,15 @@ interface Widget {
   id: number;
   report_id: number;
   title: string;
-  widget_type: 'grid' | 'chart';
+  widget_type: 'grid' | 'chart' | 'slicer';
   config: {
     chartType?: ChartType;
     groupBy?: string[];
     metrics?: any[];
     splitBy?: string[];
+    // Slicer-specific config
+    slicerType?: 'list' | 'dropdown';
+    slicerColumn?: string;
   };
 }
 
@@ -185,8 +189,45 @@ export default function DashboardViewerPage() {
     }
   };
 
+  const addSlicerWidget = async (reportId: number, column: string, slicerType: 'list' | 'dropdown') => {
+    const report = reports.find(r => r.id === reportId);
+    if (!report) return;
+
+    try {
+      const res = await fetch(`/api/dashboards/${dashboardId}/widgets`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${getToken()}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          report_id: reportId,
+          title: column, // Use column name as title
+          widget_type: 'slicer',
+          config: {
+            slicerType,
+            slicerColumn: column
+          },
+          position: { x: 0, y: widgets.length, w: 3, h: 4 }
+        })
+      });
+
+      if (res.ok) {
+        const newWidget = await res.json();
+        setWidgets([...widgets, newWidget]);
+        setShowAddModal(false);
+        toast.success(`Slicer "${column}" aggiunto`);
+      }
+    } catch (err) {
+      toast.error('Errore aggiunta slicer');
+    }
+  };
+
   const removeWidget = async (widgetId: number) => {
     if (!confirm('Rimuovere questo widget?')) return;
+
+    // Find widget to check if it's a slicer
+    const widget = widgets.find(w => w.id === widgetId);
 
     try {
       await fetch(`/api/dashboards/${dashboardId}/widgets/${widgetId}`, {
@@ -194,6 +235,12 @@ export default function DashboardViewerPage() {
         headers: { 'Authorization': `Bearer ${getToken()}` }
       });
       setWidgets(widgets.filter(w => w.id !== widgetId));
+
+      // If it was a slicer, clear its filter
+      if (widget?.widget_type === 'slicer' && widget.config?.slicerColumn) {
+        removeFilter(widget.report_id, widget.config.slicerColumn);
+      }
+
       toast.success('Widget rimosso');
     } catch (err) {
       toast.error('Errore rimozione widget');
@@ -221,7 +268,10 @@ export default function DashboardViewerPage() {
     }
   };
 
-  const toggleWidgetType = async (widgetId: number, currentType: 'grid' | 'chart') => {
+  const toggleWidgetType = async (widgetId: number, currentType: 'grid' | 'chart' | 'slicer') => {
+    // Slicers can't be toggled
+    if (currentType === 'slicer') return;
+
     const newType = currentType === 'grid' ? 'chart' : 'grid';
 
     // Update local state
@@ -276,6 +326,20 @@ export default function DashboardViewerPage() {
       setFilter(reportId, nextField, category, 'equals');
     }
     // If all groupBy fields are already filtered, do nothing (max depth reached)
+  };
+
+  // Slicer handler: when user selects values in a slicer
+  // Always stores as array to keep checkbox state consistent
+  const handleSlicerChange = (reportId: number, column: string, values: string[] | null) => {
+    if (!column) return;
+
+    if (values === null || values.length === 0) {
+      // Clear filter
+      removeFilter(reportId, column);
+    } else {
+      // Always use array format for slicers (even single value)
+      setFilter(reportId, column, values, 'equals');
+    }
   };
 
   return (
@@ -364,6 +428,7 @@ export default function DashboardViewerPage() {
                 onToggleType={() => toggleWidgetType(widget.id, widget.widget_type)}
                 filters={getFilterModelForReport(widget.report_id)}
                 onDrillDown={(value) => handleDrillDown(widget.report_id, widget.config?.groupBy || [], value)}
+                onSlicerChange={(column, values) => handleSlicerChange(widget.report_id, column, values)}
               />
             ))}
           </div>
@@ -375,6 +440,7 @@ export default function DashboardViewerPage() {
         <AddWidgetModal
           reports={availableReports}
           onAdd={addWidget}
+          onAddSlicer={addSlicerWidget}
           onClose={() => setShowAddModal(false)}
         />
       )}
@@ -390,7 +456,8 @@ function WidgetCard({
   onConfigChange,
   onToggleType,
   filters,
-  onDrillDown
+  onDrillDown,
+  onSlicerChange
 }: {
   widget: Widget;
   canEdit: boolean;
@@ -399,6 +466,7 @@ function WidgetCard({
   onToggleType: () => void;
   filters: Record<string, any>;
   onDrillDown: (value: string) => void;
+  onSlicerChange: (column: string, values: string[] | null) => void;
 }) {
   const [showSettings, setShowSettings] = useState(false);
   const config = widget.config || {};
@@ -433,6 +501,8 @@ function WidgetCard({
           {canEdit && <GripVertical className="w-4 h-4 text-slate-400 cursor-move" />}
           {widget.widget_type === 'chart' ? (
             <BarChart3 className="w-4 h-4 text-blue-500" />
+          ) : widget.widget_type === 'slicer' ? (
+            <SlidersHorizontal className="w-4 h-4 text-purple-500" />
           ) : (
             <Table className="w-4 h-4 text-emerald-500" />
           )}
@@ -487,7 +557,42 @@ function WidgetCard({
 
       {/* Widget Content */}
       <div className="h-[calc(100%-40px)]">
-        {widget.widget_type === 'chart' ? (
+        {widget.widget_type === 'slicer' ? (
+          // Slicer Widget
+          <div className="h-full overflow-hidden">
+            {config.slicerType === 'dropdown' ? (
+              <DropdownSlicer
+                reportId={widget.report_id}
+                column={config.slicerColumn || ''}
+                title={widget.title}
+                selectedValue={
+                  filters[config.slicerColumn || '']?.filter || null
+                }
+                onSelectionChange={(value) => {
+                  onSlicerChange(config.slicerColumn || '', value ? [value] : null);
+                }}
+              />
+            ) : (
+              <ListSlicer
+                reportId={widget.report_id}
+                column={config.slicerColumn || ''}
+                title={widget.title}
+                selectedValues={(() => {
+                  const f = filters[config.slicerColumn || ''];
+                  if (!f) return [];
+                  // Support both array (values) and single value (filter)
+                  if (f.values && Array.isArray(f.values)) return f.values;
+                  if (f.filter) return [f.filter];
+                  return [];
+                })()}
+                onSelectionChange={(values) => {
+                  onSlicerChange(config.slicerColumn || '', values.length > 0 ? values : null);
+                }}
+                maxHeight={350}
+              />
+            )}
+          </div>
+        ) : widget.widget_type === 'chart' ? (
           <BiChart
             reportId={widget.report_id}
             chartType={config.chartType || 'bar'}
@@ -767,14 +872,56 @@ function WidgetSettingsModal({
 function AddWidgetModal({
   reports,
   onAdd,
+  onAddSlicer,
   onClose
 }: {
   reports: Report[];
   onAdd: (reportId: number, type: 'grid' | 'chart') => void;
+  onAddSlicer: (reportId: number, column: string, slicerType: 'list' | 'dropdown') => void;
   onClose: () => void;
 }) {
   const [selectedReport, setSelectedReport] = useState<number | null>(null);
-  const [widgetType, setWidgetType] = useState<'grid' | 'chart'>('chart');
+  const [widgetType, setWidgetType] = useState<'grid' | 'chart' | 'slicer'>('chart');
+  const [slicerType, setSlicerType] = useState<'list' | 'dropdown'>('list');
+  const [slicerColumn, setSlicerColumn] = useState<string>('');
+  const [schema, setSchema] = useState<any>(null);
+  const [loadingSchema, setLoadingSchema] = useState(false);
+
+  const getToken = () => localStorage.getItem('token');
+
+  // Load schema when report is selected and widget type is slicer
+  useEffect(() => {
+    if (selectedReport && widgetType === 'slicer') {
+      setLoadingSchema(true);
+      fetch(`/api/pivot/${selectedReport}/schema`, {
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          setSchema(data);
+          // Auto-select first string column
+          const firstStringCol = data.columns?.find((c: any) => c.type === 'string');
+          if (firstStringCol) setSlicerColumn(firstStringCol.name);
+        })
+        .catch(console.error)
+        .finally(() => setLoadingSchema(false));
+    }
+  }, [selectedReport, widgetType]);
+
+  const stringColumns = schema?.columns?.filter((c: any) => c.type === 'string') || [];
+
+  const handleAdd = () => {
+    if (!selectedReport) return;
+    if (widgetType === 'slicer') {
+      if (slicerColumn) {
+        onAddSlicer(selectedReport, slicerColumn, slicerType);
+      }
+    } else {
+      onAdd(selectedReport, widgetType);
+    }
+  };
+
+  const canAdd = selectedReport && (widgetType !== 'slicer' || slicerColumn);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -815,35 +962,108 @@ function AddWidgetModal({
                 <Table className="w-5 h-5" />
                 Tabella
               </button>
+              <button
+                type="button"
+                onClick={() => setWidgetType('slicer')}
+                className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-lg border transition ${
+                  widgetType === 'slicer'
+                    ? 'border-purple-500 bg-purple-50 text-purple-700'
+                    : 'border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <SlidersHorizontal className="w-5 h-5" />
+                Slicer
+              </button>
             </div>
           </div>
 
           {/* Report Selection */}
-          <div>
+          <div className="mb-4">
             <label className="block text-sm font-medium mb-2">Seleziona Report</label>
             {reports.length === 0 ? (
               <p className="text-slate-500 text-center py-8">
-                Tutti i report sono già nella dashboard
+                Nessun report disponibile
               </p>
             ) : (
-              <div className="space-y-2 max-h-64 overflow-auto">
+              <div className="space-y-2 max-h-48 overflow-auto">
                 {reports.map(report => (
                   <button
                     type="button"
                     key={report.id}
                     onClick={() => setSelectedReport(report.id)}
-                    className={`w-full text-left p-4 rounded-lg border transition ${
+                    className={`w-full text-left p-3 rounded-lg border transition ${
                       selectedReport === report.id
                         ? 'border-blue-500 bg-blue-50'
                         : 'hover:border-blue-300 hover:bg-slate-50'
                     }`}
                   >
-                    <p className="font-medium">{report.name}</p>
+                    <p className="font-medium text-sm">{report.name}</p>
                   </button>
                 ))}
               </div>
             )}
           </div>
+
+          {/* Slicer Configuration */}
+          {widgetType === 'slicer' && selectedReport && (
+            <div className="space-y-4 pt-2 border-t">
+              {/* Slicer Type */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Tipo Slicer</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSlicerType('list')}
+                    className={`flex-1 p-2 rounded-lg border text-sm transition ${
+                      slicerType === 'list'
+                        ? 'border-purple-500 bg-purple-50 text-purple-700'
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    Lista (multi-select)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSlicerType('dropdown')}
+                    className={`flex-1 p-2 rounded-lg border text-sm transition ${
+                      slicerType === 'dropdown'
+                        ? 'border-purple-500 bg-purple-50 text-purple-700'
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    Dropdown (singolo)
+                  </button>
+                </div>
+              </div>
+
+              {/* Column Selection */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Colonna da Filtrare</label>
+                {loadingSchema ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="w-5 h-5 animate-spin text-purple-500" />
+                  </div>
+                ) : stringColumns.length === 0 ? (
+                  <p className="text-slate-500 text-sm py-2">
+                    Nessuna colonna testo disponibile
+                  </p>
+                ) : (
+                  <select
+                    value={slicerColumn}
+                    onChange={(e) => setSlicerColumn(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                    title="Seleziona colonna"
+                  >
+                    {stringColumns.map((col: any) => (
+                      <option key={col.name} value={col.name}>
+                        {col.label || col.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -857,8 +1077,8 @@ function AddWidgetModal({
           </button>
           <button
             type="button"
-            onClick={() => selectedReport && onAdd(selectedReport, widgetType)}
-            disabled={!selectedReport}
+            onClick={handleAdd}
+            disabled={!canAdd}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Aggiungi

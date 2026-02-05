@@ -459,6 +459,118 @@ async def get_pivot_schema(
         )
 
 
+@router.get("/{report_id}/distinct/{column}")
+async def get_distinct_values(
+    report_id: int,
+    column: str,
+    limit: int = 1000,
+    search: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_user)
+):
+    """
+    Get distinct values for a column - used by Slicer components.
+
+    Args:
+        report_id: Report ID
+        column: Column name to get distinct values from
+        limit: Max number of values to return (default 1000)
+        search: Optional search filter for the values
+
+    Returns:
+        List of distinct values sorted alphabetically
+    """
+    import re
+
+    result = await db.execute(
+        select(Report, Connection)
+        .join(Connection, Report.connection_id == Connection.id)
+        .where(Report.id == report_id)
+    )
+    row = result.one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    report, connection = row
+
+    # Validate column name (prevent SQL injection)
+    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', column):
+        raise HTTPException(status_code=400, detail="Invalid column name")
+
+    try:
+        config = {
+            "host": connection.host,
+            "port": connection.port,
+            "database": connection.database,
+            "username": connection.username,
+            "password": decrypt_password(connection.password_encrypted),
+            "ssl_enabled": connection.ssl_enabled
+        }
+
+        # Build distinct query with optional search filter
+        base_query = report.query
+
+        if search:
+            # Sanitize search term
+            search_safe = search.replace("'", "''")
+            if connection.db_type == "mssql":
+                distinct_query = f"""
+                    SELECT DISTINCT TOP {limit} [{column}] as value
+                    FROM ({base_query}) AS base
+                    WHERE [{column}] IS NOT NULL
+                      AND CAST([{column}] AS NVARCHAR(MAX)) LIKE '%{search_safe}%'
+                    ORDER BY [{column}]
+                """
+            else:
+                distinct_query = f"""
+                    SELECT DISTINCT {column} as value
+                    FROM ({base_query}) AS base
+                    WHERE {column} IS NOT NULL
+                      AND CAST({column} AS TEXT) ILIKE '%{search_safe}%'
+                    ORDER BY {column}
+                    LIMIT {limit}
+                """
+        else:
+            if connection.db_type == "mssql":
+                distinct_query = f"""
+                    SELECT DISTINCT TOP {limit} [{column}] as value
+                    FROM ({base_query}) AS base
+                    WHERE [{column}] IS NOT NULL
+                    ORDER BY [{column}]
+                """
+            else:
+                distinct_query = f"""
+                    SELECT DISTINCT {column} as value
+                    FROM ({base_query}) AS base
+                    WHERE {column} IS NOT NULL
+                    ORDER BY {column}
+                    LIMIT {limit}
+                """
+
+        # Ensure pool is warm
+        QueryEngine.ensure_pool_warm(connection.db_type, config)
+
+        # Execute query
+        arrow_table = QueryEngine._execute_query_sync(connection.db_type, config, distinct_query)
+
+        # Convert to list of values
+        values = arrow_table.column("value").to_pylist()
+
+        return {
+            "column": column,
+            "values": values,
+            "total": len(values),
+            "truncated": len(values) >= limit
+        }
+
+    except Exception as e:
+        logger.error(f"Distinct values error for report {report_id}, column {column}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Errore nel caricamento dei valori: {str(e)}"
+        )
+
+
 # ============================================
 # PIVOT CONFIGURATION - Save/Load
 # ============================================
