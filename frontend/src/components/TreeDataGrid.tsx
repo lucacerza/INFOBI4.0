@@ -22,7 +22,7 @@ interface TreeDataGridProps {
   previewMode?: boolean;  // Limit to 100 rows for preview
   /* STARTED NEW FEATURE: OrderBy/FilterBy */
   orderBy?: { field: string; direction: 'asc' | 'desc' }[];
-  filters?: { field: string; type: string; value: any }[];
+  filters?: { field: string; type: string; value: any; values?: any[] }[];
   /* END NEW FEATURE */
   // Having By: filter on aggregated values
   having?: { field: string; aggregation: string; type: string; value: any }[];
@@ -143,8 +143,10 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
         const sortModel = orderBy.map(o => ({ colId: o.field, sort: o.direction }));
         const filterModel: any = {};
         filters.forEach(f => {
-            // Only add filter if value is not empty
-            if (f.value !== undefined && f.value !== '') {
+            if (f.type === 'in' && f.values && f.values.length > 0) {
+                // Multi-value filter (ListSlicer / FilterBar)
+                filterModel[f.field] = { filterType: 'set', type: 'in', filter: f.values[0], values: f.values };
+            } else if (f.value !== undefined && f.value !== '') {
                 filterModel[f.field] = { filterType: 'text', type: f.type, filter: f.value };
             }
         });

@@ -113,16 +113,32 @@ def _build_safe_filter_clause(
             conditions.append(f"{col} IS NULL")
 
         elif filter_type == 'in':
-            # Multi-value filter (from ListSlicer)
+            # Multi-value filter (from ListSlicer / FilterBar)
             values = filter_def.get('values', [])
             if isinstance(values, list) and len(values) > 0:
-                placeholders = []
-                for v in values:
-                    param_name = f"p{param_counter}"
-                    placeholders.append(f":{param_name}")
-                    params[param_name] = v
-                    param_counter += 1
-                conditions.append(f"{col} IN ({', '.join(placeholders)})")
+                # Chunk into batches of 500 to avoid SQL Server's 2100 param limit
+                chunk_size = 500
+                if len(values) <= chunk_size:
+                    placeholders = []
+                    for v in values:
+                        param_name = f"p{param_counter}"
+                        placeholders.append(f":{param_name}")
+                        params[param_name] = v
+                        param_counter += 1
+                    conditions.append(f"{col} IN ({', '.join(placeholders)})")
+                else:
+                    # Split into OR-joined chunks
+                    chunks = []
+                    for i in range(0, len(values), chunk_size):
+                        chunk = values[i:i + chunk_size]
+                        placeholders = []
+                        for v in chunk:
+                            param_name = f"p{param_counter}"
+                            placeholders.append(f":{param_name}")
+                            params[param_name] = v
+                            param_counter += 1
+                        chunks.append(f"{col} IN ({', '.join(placeholders)})")
+                    conditions.append(f"({' OR '.join(chunks)})")
             elif value:
                 # Fallback to single value
                 param_name = f"p{param_counter}"
@@ -222,16 +238,32 @@ def _build_drill_filter_clause(
             conditions.append(f"{col_ref} IS NULL")
 
         elif filter_type == 'in':
-            # Multi-value filter (from ListSlicer)
+            # Multi-value filter (from ListSlicer / FilterBar)
             values = filter_def.values if hasattr(filter_def, 'values') else filter_def.get('values', [])
             if isinstance(values, list) and len(values) > 0:
-                placeholders = []
-                for v in values:
-                    param_name = f"f{param_counter}"
-                    placeholders.append(f":{param_name}")
-                    params[param_name] = v
-                    param_counter += 1
-                conditions.append(f"{col_ref} IN ({', '.join(placeholders)})")
+                # Chunk into batches of 500 to avoid SQL Server's 2100 param limit
+                chunk_size = 500
+                if len(values) <= chunk_size:
+                    placeholders = []
+                    for v in values:
+                        param_name = f"f{param_counter}"
+                        placeholders.append(f":{param_name}")
+                        params[param_name] = v
+                        param_counter += 1
+                    conditions.append(f"{col_ref} IN ({', '.join(placeholders)})")
+                else:
+                    # Split into OR-joined chunks
+                    chunks = []
+                    for i in range(0, len(values), chunk_size):
+                        chunk = values[i:i + chunk_size]
+                        placeholders = []
+                        for v in chunk:
+                            param_name = f"f{param_counter}"
+                            placeholders.append(f":{param_name}")
+                            params[param_name] = v
+                            param_counter += 1
+                        chunks.append(f"{col_ref} IN ({', '.join(placeholders)})")
+                    conditions.append(f"({' OR '.join(chunks)})")
             elif value:
                 # Fallback to single value
                 param_name = f"f{param_counter}"

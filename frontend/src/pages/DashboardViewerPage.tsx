@@ -10,9 +10,10 @@ import { useDashboardStore } from '../stores/dashboardStore';
 import TreeDataGrid from '../components/TreeDataGrid';
 import BiChart, { ChartType, ChartTypeSelector } from '../components/BiChart';
 import { ListSlicer, DropdownSlicer } from '../components/slicers';
+import FilterBar from '../components/FilterBar';
 import {
   ArrowLeft, Loader2, Plus, X, Trash2, GripVertical,
-  Table, BarChart3, Settings, Filter, SlidersHorizontal
+  Table, BarChart3, Settings, SlidersHorizontal
 } from 'lucide-react';
 import { reportsApi, pivotApi } from '../services/api';
 import { toast } from '../stores/toastStore';
@@ -302,16 +303,6 @@ export default function DashboardViewerPage() {
   // All reports available for adding (same report can be added multiple times as different widget types)
   const availableReports = reports;
 
-  // Collect all active filters for display
-  const allActiveFilters = Object.entries(filtersByReport).flatMap(([reportId, filters]) =>
-    Object.entries(filters).map(([field, filter]) => ({
-      reportId: parseInt(reportId),
-      field,
-      ...filter
-    }))
-  );
-  const hasActiveFilters = allActiveFilters.length > 0;
-
   // Drill-down handler: when user clicks on a chart element
   // Supports multi-level drill-down: if groupBy[0] is already filtered, use groupBy[1], etc.
   const handleDrillDown = (reportId: number, groupByFields: string[], category: string) => {
@@ -354,15 +345,6 @@ export default function DashboardViewerPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          {hasActiveFilters && (
-            <button
-              onClick={clearAllFilters}
-              className="flex items-center gap-2 px-3 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm"
-            >
-              <X className="w-4 h-4" />
-              Rimuovi Filtri
-            </button>
-          )}
           {isAdminOrSuperuser && (
             <button
               onClick={() => setShowAddModal(true)}
@@ -375,29 +357,16 @@ export default function DashboardViewerPage() {
         </div>
       </div>
 
-      {/* Active Filters Bar */}
-      {hasActiveFilters && (
-        <div className="bg-blue-50 border-b border-blue-100 px-4 py-2 flex items-center gap-2 flex-wrap">
-          <Filter className="w-4 h-4 text-blue-500" />
-          <span className="text-sm text-blue-700 font-medium">Filtri attivi:</span>
-          {allActiveFilters.map((filter, idx) => (
-            <span
-              key={`${filter.reportId}-${filter.field}-${idx}`}
-              className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs"
-            >
-              <span className="font-medium">{filter.field}:</span> {String(filter.value)}
-              <button
-                type="button"
-                onClick={() => removeFilter(filter.reportId, filter.field)}
-                className="ml-1 hover:bg-blue-200 rounded-full p-0.5"
-                title="Rimuovi filtro"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
+      {/* Filter Bar */}
+      <FilterBar
+        dashboardId={dashboardId}
+        availableReports={reports.length > 0 ? reports : widgets.map(w => ({ id: w.report_id, name: w.title })).filter((v, i, a) => a.findIndex(t => t.id === v.id) === i)}
+        filtersByReport={filtersByReport}
+        onFilterChange={(reportId, column, values) => handleSlicerChange(reportId, column, values.length > 0 ? values : null)}
+        onFilterRemove={(reportId, column) => removeFilter(reportId, column)}
+        onClearAll={clearAllFilters}
+        canEdit={isAdminOrSuperuser}
+      />
 
       {/* Content */}
       <div className="flex-1 p-4 overflow-auto">
@@ -617,7 +586,8 @@ function WidgetCard({
             filters={Object.entries(filters).map(([field, f]: [string, any]) => ({
               field,
               type: f.type || 'equals',
-              value: f.filter
+              value: f.filter,
+              values: f.values
             }))}
             previewMode={false}
           />
@@ -882,46 +852,39 @@ function AddWidgetModal({
 }) {
   const [selectedReport, setSelectedReport] = useState<number | null>(null);
   const [widgetType, setWidgetType] = useState<'grid' | 'chart' | 'slicer'>('chart');
-  const [slicerType, setSlicerType] = useState<'list' | 'dropdown'>('list');
-  const [slicerColumn, setSlicerColumn] = useState<string>('');
   const [schema, setSchema] = useState<any>(null);
   const [loadingSchema, setLoadingSchema] = useState(false);
+  const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
+  const [slicerType, setSlicerType] = useState<'list' | 'dropdown'>('list');
 
   const getToken = () => localStorage.getItem('token');
 
-  // Load schema when report is selected and widget type is slicer
+  // Load schema when report selected and slicer type chosen
   useEffect(() => {
-    if (selectedReport && widgetType === 'slicer') {
-      setLoadingSchema(true);
-      fetch(`/api/pivot/${selectedReport}/schema`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      })
-        .then(res => res.json())
-        .then(data => {
-          setSchema(data);
-          // Auto-select first string column
-          const firstStringCol = data.columns?.find((c: any) => c.type === 'string');
-          if (firstStringCol) setSlicerColumn(firstStringCol.name);
-        })
-        .catch(console.error)
-        .finally(() => setLoadingSchema(false));
-    }
+    if (!selectedReport || widgetType !== 'slicer') { setSchema(null); return; }
+    setLoadingSchema(true);
+    setSchema(null);
+    setSelectedColumn(null);
+    fetch(`/api/pivot/${selectedReport}/schema`, {
+      headers: { 'Authorization': `Bearer ${getToken()}` }
+    })
+      .then(res => res.json())
+      .then(data => setSchema(data))
+      .catch(() => setSchema(null))
+      .finally(() => setLoadingSchema(false));
   }, [selectedReport, widgetType]);
-
-  const stringColumns = schema?.columns?.filter((c: any) => c.type === 'string') || [];
 
   const handleAdd = () => {
     if (!selectedReport) return;
     if (widgetType === 'slicer') {
-      if (slicerColumn) {
-        onAddSlicer(selectedReport, slicerColumn, slicerType);
-      }
+      if (!selectedColumn) return;
+      onAddSlicer(selectedReport, selectedColumn, slicerType);
     } else {
       onAdd(selectedReport, widgetType);
     }
   };
 
-  const canAdd = selectedReport && (widgetType !== 'slicer' || slicerColumn);
+  const canAdd = !!selectedReport && (widgetType !== 'slicer' || !!selectedColumn);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -1004,66 +967,67 @@ function AddWidgetModal({
             )}
           </div>
 
-          {/* Slicer Configuration */}
+          {/* Slicer-specific options */}
           {widgetType === 'slicer' && selectedReport && (
-            <div className="space-y-4 pt-2 border-t">
-              {/* Slicer Type */}
-              <div>
-                <label className="block text-sm font-medium mb-2">Tipo Slicer</label>
+            <>
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Colonna</label>
+                {loadingSchema ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                  </div>
+                ) : !schema || schema.columns?.length === 0 ? (
+                  <p className="text-slate-500 text-sm">Nessuna colonna disponibile</p>
+                ) : (
+                  <div className="space-y-1 max-h-36 overflow-auto border rounded-lg">
+                    {schema.columns.map((col: any) => (
+                      <button
+                        type="button"
+                        key={col.name}
+                        onClick={() => setSelectedColumn(col.name)}
+                        className={`w-full text-left px-3 py-1.5 text-sm transition ${
+                          selectedColumn === col.name
+                            ? 'bg-purple-50 text-purple-700 font-medium'
+                            : 'hover:bg-slate-50 text-slate-700'
+                        }`}
+                      >
+                        {col.label || col.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Stile Slicer</label>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => setSlicerType('list')}
-                    className={`flex-1 p-2 rounded-lg border text-sm transition ${
+                    className={`flex-1 p-2 text-sm rounded-lg border transition ${
                       slicerType === 'list'
                         ? 'border-purple-500 bg-purple-50 text-purple-700'
                         : 'border-slate-200 hover:border-slate-300'
                     }`}
                   >
-                    Lista (multi-select)
+                    Lista
                   </button>
                   <button
                     type="button"
                     onClick={() => setSlicerType('dropdown')}
-                    className={`flex-1 p-2 rounded-lg border text-sm transition ${
+                    className={`flex-1 p-2 text-sm rounded-lg border transition ${
                       slicerType === 'dropdown'
                         ? 'border-purple-500 bg-purple-50 text-purple-700'
                         : 'border-slate-200 hover:border-slate-300'
                     }`}
                   >
-                    Dropdown (singolo)
+                    Dropdown
                   </button>
                 </div>
               </div>
-
-              {/* Column Selection */}
-              <div>
-                <label className="block text-sm font-medium mb-2">Colonna da Filtrare</label>
-                {loadingSchema ? (
-                  <div className="flex items-center justify-center py-4">
-                    <Loader2 className="w-5 h-5 animate-spin text-purple-500" />
-                  </div>
-                ) : stringColumns.length === 0 ? (
-                  <p className="text-slate-500 text-sm py-2">
-                    Nessuna colonna testo disponibile
-                  </p>
-                ) : (
-                  <select
-                    value={slicerColumn}
-                    onChange={(e) => setSlicerColumn(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                    title="Seleziona colonna"
-                  >
-                    {stringColumns.map((col: any) => (
-                      <option key={col.name} value={col.name}>
-                        {col.label || col.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            </div>
+            </>
           )}
+
         </div>
 
         {/* Footer */}
