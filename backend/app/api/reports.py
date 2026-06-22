@@ -63,8 +63,9 @@ async def test_query(
             "columns": [field.name for field in arrow_table.schema],
             "message": "Query eseguita con successo"
         }
-        
+
     except Exception as e:
+        logger.exception("Test query failed")
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("", response_model=List[ReportResponse])
@@ -380,8 +381,9 @@ async def execute_grid_query(
             'lastRow': total,
             'elapsed_ms': elapsed
         }
-        
+
     except Exception as e:
+        logger.exception(f"Grid query failed for report {report_id}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post('/{report_id}/pivot-drill')
@@ -437,5 +439,5 @@ async def execute_pivot_drill(
         }
         
     except Exception as e:
-        logger.error(f"❌ PIVOT DRILL Error Report {report_id}: {e}")
+        logger.exception(f"PIVOT DRILL Error Report {report_id}")
         raise HTTPException(status_code=500, detail=str(e))

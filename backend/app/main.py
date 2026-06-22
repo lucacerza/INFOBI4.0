@@ -10,11 +10,12 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import ORJSONResponse
 
 from app.core.config import settings, security_warnings
+from app.core.logging_config import configure_logging
 from app.db.database import init_db
 from app.api import auth, connections, reports, pivot, dashboards, export, users
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging (formato strutturato + livello da LOG_LEVEL)
+configure_logging()
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager

@@ -422,7 +422,7 @@ async def get_pivot_schema(
             "available_metrics": report.available_metrics or []
         }
     except Exception as e:
-        logger.error(f"Schema error for report {report_id}: {str(e)}")
+        logger.exception(f"Schema error for report {report_id}")
         raise HTTPException(
             status_code=500,
             detail=f"Errore nel caricamento dello schema: {str(e)}"
@@ -527,7 +527,7 @@ async def get_distinct_values(
         }
 
     except Exception as e:
-        logger.error(f"Distinct values error for report {report_id}, column {column}: {str(e)}")
+        logger.exception(f"Distinct values error for report {report_id}, column {column}")
         raise HTTPException(
             status_code=500,
             detail=f"Errore nel caricamento dei valori: {str(e)}"
@@ -579,7 +579,7 @@ async def save_pivot_config(
         return {"success": True, "message": "Configurazione salvata"}
 
     except Exception as e:
-        logger.error(f"Error saving pivot config: {str(e)}")
+        logger.exception("Error saving pivot config")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -614,7 +614,7 @@ async def load_pivot_config(
         return config
 
     except Exception as e:
-        logger.error(f"Error loading pivot config: {str(e)}")
+        logger.exception("Error loading pivot config")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     JWT_SECRET: str = ""            # firma dei JWT
     DATA_ENCRYPTION_KEY: str = ""   # cifratura Fernet delle password delle connessioni
     ENVIRONMENT: str = "development"  # 'production' -> validazione stringente all'avvio
+    LOG_LEVEL: str = "INFO"           # DEBUG/INFO/WARNING/ERROR
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     

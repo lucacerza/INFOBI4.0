@@ -1,4 +1,5 @@
 """Export API - Excel, CSV"""
+import logging
 from io import BytesIO
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -11,6 +12,7 @@ from app.core.security import decrypt_password
 from app.services.query_engine import QueryEngine
 from app.core.engine_pool import get_engine
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.get("/{report_id}/xlsx")
@@ -61,6 +63,7 @@ async def export_xlsx(
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
     except Exception as e:
+        logger.exception(f"Excel export failed for report {report_id}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{report_id}/csv")
@@ -110,4 +113,5 @@ async def export_csv(
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
     except Exception as e:
+        logger.exception(f"CSV export failed for report {report_id}")
         raise HTTPException(status_code=500, detail=str(e))
