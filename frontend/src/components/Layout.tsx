@@ -44,7 +44,7 @@ export default function Layout() {
   };
   
   return (
-    <div className="h-screen flex bg-gray-50">
+    <div className="h-screen flex bg-ground">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div 
@@ -130,14 +130,14 @@ export default function Layout() {
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <header className="h-14 bg-white border-b flex items-center px-4 gap-4 lg:hidden">
+        <header className="h-14 bg-surface border-b border-line flex items-center px-4 gap-4 lg:hidden">
           <button
-            className="p-2 hover:bg-gray-100 rounded-lg"
+            className="p-2 hover:bg-ground rounded-lg text-ink"
             onClick={toggleSidebar}
           >
             <Menu className="w-5 h-5" />
           </button>
-          <span className="font-semibold text-slate-800">INFOBI</span>
+          <span className="font-semibold text-ink">INFOBI</span>
         </header>
         
         {/* Page content */}
