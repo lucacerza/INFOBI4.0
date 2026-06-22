@@ -12,6 +12,7 @@ from app.core.security import decrypt_password
 from app.models.schemas import ReportCreate, ReportUpdate, ReportResponse, GridRequest, PivotDrillRequest
 from app.services.query_engine import QueryEngine, query_engine
 from app.services.rls import get_rls_filters, apply_rls_to_filtermodel
+from app.services.sql_validation import validate_select_query
 from app.services.cache import cache
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,12 @@ async def create_report(
     user = Depends(get_current_superuser)  # SECURITY: Solo superuser può creare report
 ):
     """Create a new report (SUPERUSER ONLY)"""
+    # Validazione query (solo SELECT/CTE di sola lettura) — prima di tutto
+    try:
+        validate_select_query(data.query)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     # Verify connection exists
     conn_result = await db.execute(select(Connection).where(Connection.id == data.connection_id))
     if not conn_result.scalar_one_or_none():
@@ -133,7 +140,14 @@ async def update_report(
     report = result.scalar_one_or_none()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
-    
+
+    # Se la query viene aggiornata, validala (solo SELECT/CTE)
+    if data.query is not None:
+        try:
+            validate_select_query(data.query)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
     for field, value in data.model_dump(exclude_unset=True).items():
         if field == "default_metrics" and value:
             value = [m.model_dump() if hasattr(m, 'model_dump') else m for m in value]
