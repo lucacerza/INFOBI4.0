@@ -11,7 +11,6 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Save, Loader2, Play, CheckCircle, XCircle, AlertCircle, Settings, Eye } from 'lucide-react';
 import { logger } from '../utils/logger';
-import BiGrid from '../components/BiGrid';
 import BiGridConfig from '../components/BiGridConfig';
 import TreeDataGrid from '../components/TreeDataGrid';
 
