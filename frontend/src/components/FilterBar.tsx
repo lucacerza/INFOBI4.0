@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Filter, Plus, X, Loader2 } from 'lucide-react';
 import FilterBarDropdown from './FilterBarDropdown';
+import { selectedValuesOf } from '../stores/dashboardStore';
 
 export interface FilterBarConfig {
   reportId: number;
@@ -80,13 +81,9 @@ export default function FilterBar({
     return total + Object.keys(reportFilters).length;
   }, 0);
 
-  // Get selected values for a filter from store
+  // Get selected values for a filter from store (accessor unico, gestisce single e multi)
   const getSelectedValues = (reportId: number, column: string): string[] => {
-    const f = filtersByReport[reportId]?.[column];
-    if (!f) return [];
-    if (f.values && Array.isArray(f.values)) return f.values;
-    if (f.filter) return [f.filter];
-    return [];
+    return selectedValuesOf(filtersByReport[reportId]?.[column]);
   };
 
   // Check if multiple reports are used

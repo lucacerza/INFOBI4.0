@@ -49,7 +49,8 @@ export default function DashboardViewerPage() {
     clearFiltersForReport,
     clearAllFilters,
     setDashboard: setStoreDashboard,
-    getFilterModelForReport
+    getFilterModelForReport,
+    getSelectedValues
   } = useDashboardStore();
   const isSuperuser = user?.role === 'superuser';
   const isAdminOrSuperuser = user?.role === 'admin' || user?.role === 'superuser';
@@ -396,6 +397,7 @@ export default function DashboardViewerPage() {
                 onConfigChange={(config) => updateWidgetConfig(widget.id, config)}
                 onToggleType={() => toggleWidgetType(widget.id, widget.widget_type)}
                 filters={getFilterModelForReport(widget.report_id)}
+                getSelectedValues={(column) => getSelectedValues(widget.report_id, column)}
                 onDrillDown={(value) => handleDrillDown(widget.report_id, widget.config?.groupBy || [], value)}
                 onSlicerChange={(column, values) => handleSlicerChange(widget.report_id, column, values)}
               />
@@ -425,6 +427,7 @@ function WidgetCard({
   onConfigChange,
   onToggleType,
   filters,
+  getSelectedValues,
   onDrillDown,
   onSlicerChange
 }: {
@@ -434,6 +437,7 @@ function WidgetCard({
   onConfigChange: (config: Widget['config']) => void;
   onToggleType: () => void;
   filters: Record<string, any>;
+  getSelectedValues: (column: string) => any[];
   onDrillDown: (value: string) => void;
   onSlicerChange: (column: string, values: string[] | null) => void;
 }) {
@@ -534,9 +538,7 @@ function WidgetCard({
                 reportId={widget.report_id}
                 column={config.slicerColumn || ''}
                 title={widget.title}
-                selectedValue={
-                  filters[config.slicerColumn || '']?.filter || null
-                }
+                selectedValue={getSelectedValues(config.slicerColumn || '')[0] ?? null}
                 onSelectionChange={(value) => {
                   onSlicerChange(config.slicerColumn || '', value ? [value] : null);
                 }}
@@ -546,14 +548,7 @@ function WidgetCard({
                 reportId={widget.report_id}
                 column={config.slicerColumn || ''}
                 title={widget.title}
-                selectedValues={(() => {
-                  const f = filters[config.slicerColumn || ''];
-                  if (!f) return [];
-                  // Support both array (values) and single value (filter)
-                  if (f.values && Array.isArray(f.values)) return f.values;
-                  if (f.filter) return [f.filter];
-                  return [];
-                })()}
+                selectedValues={getSelectedValues(config.slicerColumn || '')}
                 onSelectionChange={(values) => {
                   onSlicerChange(config.slicerColumn || '', values.length > 0 ? values : null);
                 }}

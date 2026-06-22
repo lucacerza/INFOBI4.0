@@ -14,7 +14,7 @@
 - [x] `connections.py`: import mancante di `settings` (crash test connessione)
 - [x] `query_engine.py`: variabile `start` non definita nel ramo flat-table (crash pivot)
 - [x] SQLi: chiusa l'intera classe (grid, havingModel, distinct search, identificatori pivot) + whitelist aggregazioni
-- [ ] Unificare formato filtri `FilterValue` vs `filterModel` (fix slicer: checkbox + "Seleziona tutti" + DropdownSlicer)
+- [x] Unificare formato filtri `FilterValue` vs `filterModel` (fix slicer: checkbox + "Seleziona tutti" + DropdownSlicer) — accessor unico `selectedValuesOf`/`getSelectedValues` + test vitest
 - [ ] Persistere `widget_type` (backend `WidgetUpdate` + toggle)
 
 ## Fase 2 — Sicurezza & pulizia
@@ -32,7 +32,7 @@
 ## Fase 3 — Test & CI (per rendere sicuri i passi successivi)
 > Anticipata: i test si scrivono e si eseguono ad **ogni** step, non solo qui.
 - [x] pytest backend — harness avviato (backend/tests/, `pytest.ini`, `requirements-dev.txt`); test SQL-safety + smoke. Da estendere per ogni nuova funzione.
-- [ ] vitest frontend
+- [x] vitest frontend — harness avviato (`npm test`); test dello store filtri. Da estendere per ogni nuova logica.
 - [ ] CI minimale (GitHub Actions): `tsc --noEmit` + `pytest`
 
 ## Fase 4 — Design system / UI (qualità estetica)
