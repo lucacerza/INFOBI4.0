@@ -276,13 +276,24 @@ export default function DashboardViewerPage() {
 
     const newType = currentType === 'grid' ? 'chart' : 'grid';
 
-    // Update local state
+    // Update local state (ottimistico)
     setWidgets(widgets.map(w =>
       w.id === widgetId ? { ...w, widget_type: newType } : w
     ));
 
-    // Persist to backend - note: backend doesn't support changing widget_type yet
-    // This is a local-only toggle for now
+    // Persist to backend
+    try {
+      await fetch(`/api/dashboards/${dashboardId}/widgets/${widgetId}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${getToken()}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ widget_type: newType })
+      });
+    } catch (err) {
+      toast.error('Errore aggiornamento tipo widget');
+    }
   };
 
   if (loading) {

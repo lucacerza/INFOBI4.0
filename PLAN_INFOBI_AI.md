@@ -15,7 +15,7 @@
 - [x] `query_engine.py`: variabile `start` non definita nel ramo flat-table (crash pivot)
 - [x] SQLi: chiusa l'intera classe (grid, havingModel, distinct search, identificatori pivot) + whitelist aggregazioni
 - [x] Unificare formato filtri `FilterValue` vs `filterModel` (fix slicer: checkbox + "Seleziona tutti" + DropdownSlicer) — accessor unico `selectedValuesOf`/`getSelectedValues` + test vitest
-- [ ] Persistere `widget_type` (backend `WidgetUpdate` + toggle)
+- [x] Persistere `widget_type` (backend `WidgetUpdate` + toggle) — + test d'integrazione (harness DB isolato)
 
 ## Fase 2 — Sicurezza & pulizia
 - [ ] Separare `SECRET_KEY` → `JWT_SECRET` + `DATA_ENCRYPTION_KEY`; validazione `.env` all'avvio (rifiuto default in prod)

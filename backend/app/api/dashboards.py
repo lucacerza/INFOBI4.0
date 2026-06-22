@@ -250,10 +250,13 @@ async def add_widget(
     )
 
 
+WIDGET_TYPES = ("grid", "chart", "slicer")
+
 class WidgetUpdate(BaseModel):
     title: Optional[str] = None
     config: Optional[Dict[str, Any]] = None
     position: Optional[Dict[str, Any]] = None
+    widget_type: Optional[str] = None
 
 
 @router.put("/{dashboard_id}/widgets/{widget_id}", response_model=WidgetResponse)
@@ -291,6 +294,10 @@ async def update_widget(
         widget.config = widget_data.config
     if widget_data.position is not None:
         widget.position = widget_data.position
+    if widget_data.widget_type is not None:
+        if widget_data.widget_type not in WIDGET_TYPES:
+            raise HTTPException(status_code=400, detail="Tipo widget non valido")
+        widget.widget_type = widget_data.widget_type
 
     await db.commit()
     await db.refresh(widget)
