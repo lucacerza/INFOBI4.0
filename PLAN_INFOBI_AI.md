@@ -11,8 +11,8 @@
 - [ ] Rename cartella → `INFOBI_AI` (a fine lavori, fuori sessione)
 
 ## Fase 1 — Stabilità: bug confermati (FONDAMENTA, prima di tutto)
-- [ ] `connections.py`: import mancante di `settings` (crash test connessione)
-- [ ] `query_engine.py`: variabile `start` non definita nel ramo flat-table (crash pivot)
+- [x] `connections.py`: import mancante di `settings` (crash test connessione)
+- [x] `query_engine.py`: variabile `start` non definita nel ramo flat-table (crash pivot)
 - [ ] SQLi residua in `execute_grid_query` (filtri numerici → parametrizzare)
 - [ ] SQLi residua in `havingModel` (→ parametrizzare)
 - [ ] Unificare formato filtri `FilterValue` vs `filterModel` (fix slicer: checkbox + "Seleziona tutti" + DropdownSlicer)
@@ -27,6 +27,8 @@
 - [ ] Backup automatico di `data/infobi.db`
 - [ ] Audit log + structured logging
 - [ ] Rate limiting / query cost guard (limite righe + timeout per ruolo)
+- [ ] Row-Level Security (RLS) applicativa per utente/ruolo
+- [ ] Validazione SQL + stima costo prima del salvataggio report; versioning definizioni report
 
 ## Fase 3 — Test & CI (per rendere sicuri i passi successivi)
 - [ ] pytest backend (almeno `query_engine`, auth)
@@ -49,15 +51,24 @@
 - [ ] Drill-down con breadcrumb visibile (risalita livelli)
 - [ ] Cross-filtering bidirezionale (click widget → filtra altri)
 - [ ] Snapshot/Export dashboard (PDF/PNG) + delivery schedulata (APScheduler)
+- [ ] Export aggregato/pivot (oggi solo dati raw)
+- [ ] Viste/preferiti personali per utente
 
-## Fase 6 — Datawarehouse
+## Fase 6 — Funzioni analitiche
+- [ ] Colonne calcolate (espressioni utente → Polars: row-level, aggregate, window)
+- [ ] Colonne Delta / Confronto (2024 vs 2023, %, running total) — reimplementare pulito (non il blocco `if False`)
+
+## Fase 7 — Datawarehouse
+- [ ] Catalogo schema per connessione (introspezione tabelle/colonne/tipi/relazioni) — base conoscitiva per l'AI
+- [ ] Metadati semantici su report/colonne (nome business, descrizione, unità, formato, misura/dimensione, aggregazione default)
 - [ ] DuckDB + Parquet, architettura medallion (bronze/silver/gold)
 - [ ] ETL incrementale schedulato (APScheduler, watermark `updated_at`)
 - [ ] Semantic layer (misure/dimensioni riusabili)
 - [ ] Report/Dashboard "warehouse-backed" (interrogano DuckDB, non l'OLTP)
 - [ ] Data lineage / freschezza per widget
 
-## Fase 7 — AI (Claude)
+## Fase 8 — AI (Claude)
+- [ ] Guardrail & governance AI: whitelist metriche/colonne certificate; logging traduzioni NL→query; feedback loop utente (blocca allucinazioni e SQLi by-design)
 - [ ] NL → Pivot (tool-use, config validata, non SQL grezzo)
 - [ ] NL → generazione Dashboard (JSON widget)
 - [ ] Auto-insight / narrazione su dati aggregati
