@@ -23,7 +23,7 @@
 - [x] Rimuovere dead code residuo: blocco Delta `if False` (pivot.py), alias inutili `deps.py`, `_execute_df_sync`/`get_column_values` (query_engine), schemi morti `schemas.py` (PivotRequest + Dashboard/Widget). NB: la 2ª `formatNumber` di BiChart era in realtà USATA (KPI) → mantenuta.
 - [ ] Standardizzare `api.ts` (usarlo ovunque o rimuoverlo)
 - [x] Restringere gli `except Exception` larghi (loggare l'errore reale con traceback, no `except:` nudi) + logging strutturato (LOG_LEVEL) — Step 2.3a
-- [ ] Backup automatico di `data/infobi.db`
+- [x] Backup automatico di `data/infobi.db` — sqlite3 backup API + rotazione + scheduler APScheduler (configurabile) + test
 - [x] Audit log — Step 2.3b: tabella `audit_log` + middleware (auto-audit di tutte le mutazioni CRUD) + login (successo/fallimento) + endpoint sola lettura superuser + test
 - [ ] Rate limiting / query cost guard (limite righe + timeout per ruolo)
 - [ ] Row-Level Security (RLS) applicativa per utente/ruolo

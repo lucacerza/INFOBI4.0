@@ -34,7 +34,13 @@ class Settings(BaseSettings):
     MAX_ROWS_EXPORT: int = 5000000  # 5M rows max
     QUERY_TIMEOUT: int = 300  # 5 minutes
     CONNECTION_TIMEOUT: int = 180  # 3 minutes for connection test with warm-up
-    
+
+    # Backup automatico del DB applicativo (SQLite)
+    BACKUP_ENABLED: bool = True
+    BACKUP_DIR: str = "./data/backups"
+    BACKUP_INTERVAL_HOURS: int = 24
+    BACKUP_KEEP: int = 7  # quanti backup conservare (rotazione)
+
     class Config:
         env_file = ".env"
 

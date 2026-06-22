@@ -46,9 +46,21 @@ async def lifespan(app: FastAPI):
     from app.core.warmup import warm_up_connections
     await warm_up_connections()
 
+    # Scheduler per il backup automatico del DB SQLite
+    scheduler = None
+    if settings.BACKUP_ENABLED:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from app.services.backup import backup_database
+        scheduler = AsyncIOScheduler()
+        scheduler.add_job(backup_database, "interval", hours=settings.BACKUP_INTERVAL_HOURS, id="db_backup")
+        scheduler.start()
+        logger.info(f"🗄️  Backup automatico DB attivo (ogni {settings.BACKUP_INTERVAL_HOURS}h, conserva {settings.BACKUP_KEEP})")
+
     yield
 
-    # Cleanup: dispose all connection pools
+    # Cleanup: stop scheduler + dispose all connection pools
+    if scheduler:
+        scheduler.shutdown(wait=False)
     logger.info("🔌 Disposing connection pools...")
     from app.core.engine_pool import close_all_pools
     close_all_pools()
