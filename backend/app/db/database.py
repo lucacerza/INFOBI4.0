@@ -173,6 +173,24 @@ class DashboardWidget(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 # ============================================
+# AUDIT LOG
+# ============================================
+class AuditLog(Base):
+    """Traccia eventi sensibili: login, mutazioni (CRUD), export, ecc."""
+    __tablename__ = "audit_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    username = Column(String(255))          # denormalizzato: l'utente potrebbe essere cancellato
+    action = Column(String(255))            # es. "login", "POST /api/connections"
+    method = Column(String(10))
+    path = Column(String(512))
+    status_code = Column(Integer)
+    success = Column(Boolean, default=True)
+    ip_address = Column(String(64))
+    detail = Column(Text)
+
+# ============================================
 # INITIALIZATION
 # ============================================
 async def init_db():

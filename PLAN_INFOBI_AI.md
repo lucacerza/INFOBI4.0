@@ -24,7 +24,7 @@
 - [ ] Standardizzare `api.ts` (usarlo ovunque o rimuoverlo)
 - [x] Restringere gli `except Exception` larghi (loggare l'errore reale con traceback, no `except:` nudi) + logging strutturato (LOG_LEVEL) — Step 2.3a
 - [ ] Backup automatico di `data/infobi.db`
-- [ ] Audit log (structured logging già fatto in 2.3a) — Step 2.3b
+- [x] Audit log — Step 2.3b: tabella `audit_log` + middleware (auto-audit di tutte le mutazioni CRUD) + login (successo/fallimento) + endpoint sola lettura superuser + test
 - [ ] Rate limiting / query cost guard (limite righe + timeout per ruolo)
 - [ ] Row-Level Security (RLS) applicativa per utente/ruolo
 - [ ] Validazione SQL + stima costo prima del salvataggio report; versioning definizioni report

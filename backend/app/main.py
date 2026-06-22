@@ -11,8 +11,13 @@ from fastapi.responses import ORJSONResponse
 
 from app.core.config import settings, security_warnings
 from app.core.logging_config import configure_logging
+from app.core.security import decode_token
 from app.db.database import init_db
-from app.api import auth, connections, reports, pivot, dashboards, export, users
+from app.services.audit import record_audit
+from app.api import auth, connections, reports, pivot, dashboards, export, users, audit
+
+# Metodi HTTP considerati "mutazioni" da auditare
+AUDIT_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 # Configure logging (formato strutturato + livello da LOG_LEVEL)
 configure_logging()
@@ -57,6 +62,41 @@ app = FastAPI(
     default_response_class=ORJSONResponse,  # Faster JSON serialization
 )
 
+def _username_from_request(request: Request) -> str | None:
+    """Estrae lo username dal bearer token (best-effort, senza sollevare)."""
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        payload = decode_token(auth_header[7:])
+        if payload:
+            return payload.get("sub")
+    return None
+
+
+@app.middleware("http")
+async def audit_middleware(request: Request, call_next):
+    """Audita automaticamente tutte le mutazioni /api (CRUD). Il login è auditato a parte."""
+    response = await call_next(request)
+    try:
+        path = request.url.path
+        if (
+            request.method in AUDIT_METHODS
+            and path.startswith("/api")
+            and path != "/api/auth/login"  # login auditato esplicitamente con username noto
+        ):
+            await record_audit(
+                username=_username_from_request(request),
+                action=f"{request.method} {path}",
+                method=request.method,
+                path=path,
+                status_code=response.status_code,
+                success=response.status_code < 400,
+                ip_address=request.client.host if request.client else None,
+            )
+    except Exception:
+        logger.exception("audit middleware error")
+    return response
+
+
 # Middleware for performance
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
@@ -76,6 +116,7 @@ app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
 app.include_router(pivot.router, prefix="/api/pivot", tags=["Pivot"])
 app.include_router(dashboards.router, prefix="/api/dashboards", tags=["Dashboards"])
 app.include_router(export.router, prefix="/api/export", tags=["Export"])
+app.include_router(audit.router, prefix="/api/audit", tags=["Audit"])
 
 @app.get("/health")
 async def health():
