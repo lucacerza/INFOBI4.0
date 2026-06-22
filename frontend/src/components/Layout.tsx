@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
-import { 
-  LayoutDashboard, 
-  FileText, 
-  Database, 
+import { useThemeStore } from '../stores/themeStore';
+import {
+  LayoutDashboard,
+  FileText,
+  Database,
   LogOut,
   Menu,
   X,
-  Users
+  Users,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 /**
@@ -26,6 +29,7 @@ const navItems = [
 
 export default function Layout() {
   const { user, logout } = useAuthStore();
+  const { theme, toggle: toggleTheme } = useThemeStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   
   const userRole = user?.role || 'user';
@@ -105,6 +109,14 @@ export default function Layout() {
               <p className="text-xs text-slate-400 capitalize">{user?.role}</p>
             </div>
           </div>
+          <button
+            onClick={toggleTheme}
+            className="w-full flex items-center gap-2 px-3 py-2 mb-1 text-sm text-slate-300 hover:bg-slate-800 rounded-lg transition"
+            title={theme === 'dark' ? 'Passa al tema chiaro' : 'Passa al tema scuro'}
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            <span>{theme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}</span>
+          </button>
           <button
             onClick={logout}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 rounded-lg transition"
