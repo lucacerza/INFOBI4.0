@@ -461,7 +461,7 @@ class QueryEngine:
                 with ipc.new_stream(sink, arrow_table.schema) as writer:
                     writer.write_table(arrow_table)
 
-                elapsed = (time.perf_counter() - start) * 1000
+                elapsed = (time.perf_counter() - start_total) * 1000
                 logger.info(f"📊 FLAT TABLE mode: {arrow_table.num_rows} rows, {len(arrow_table.schema)} columns ({elapsed:.1f}ms)")
                 return sink.getvalue(), arrow_table.num_rows, elapsed
 
