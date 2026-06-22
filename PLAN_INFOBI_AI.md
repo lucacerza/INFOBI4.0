@@ -39,10 +39,11 @@
 - [x] CI (GitHub Actions): job backend (`pytest`) + job frontend (`tsc --noEmit` + `vitest`) ad ogni push/PR. Rimosso `duckdb` (inutilizzato, no wheel py3.12) per far passare l'install.
 
 ## Fase 4 — Design system / UI (qualità estetica)
-- [ ] Design tokens (palette, scala tipografica, spacing) coerenti
-- [ ] Dark mode reale (oggi solo sidebar)
-- [ ] Responsive mobile vero (tabelle incluse)
-- [ ] Componenti UI coerenti / rifiniti
+> Direzione scelta: **"Studio"** (enterprise chiara, accento indaco) **+ numeri monospaziati** (da "Control Room"). Mockup approvato.
+- [x] 4.1 Design tokens: variabili CSS light/`.dark` + tema Tailwind semantico (ground/surface/ink/muted/line/accent/pos/neg) + font `num` mono
+- [ ] 4.2 Dark mode reale (toggle + persistenza, `darkMode:'class'` già attivo)
+- [ ] 4.3 Componenti UI allineati ai token (KPI, FilterBar, tabelle, card)
+- [ ] 4.4 Responsive mobile vero (tabelle incluse)
 
 ## Fase 5 — Dashboard potenziate
 - [ ] Layout vero con `react-grid-layout` (drag + resize) e persistenza (campo `layout`)

@@ -2,11 +2,59 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   Design tokens INFOBI — direzione "Studio" + numeri mono
+   Light = :root, Dark = .dark (toggle classe su <html>)
+   ============================================================ */
+:root {
+  --c-ground: #F6F7F9;
+  --c-surface: #FFFFFF;
+  --c-surface-2: #FBFBFD;
+  --c-text: #1B2430;
+  --c-muted: #6B7480;
+  --c-border: #E7EAF0;
+  --c-accent: #4F46E5;
+  --c-accent-soft: #EEF0FE;
+  --c-accent-strong: #4338CA;
+  --c-up: #15803D;
+  --c-down: #B91C1C;
+  --font-num: ui-monospace, "Cascadia Mono", "SF Mono", "Segoe UI Mono", Consolas, monospace;
+  --scroll-track: #eef0f3;
+  --scroll-thumb: #c5cad3;
+}
+
+.dark {
+  --c-ground: #0F1420;
+  --c-surface: #161D2B;
+  --c-surface-2: #131A26;
+  --c-text: #E8ECF3;
+  --c-muted: #8A95A6;
+  --c-border: #283143;
+  --c-accent: #6366F1;
+  --c-accent-soft: #1E2440;
+  --c-accent-strong: #A5B4FC;
+  --c-up: #34D399;
+  --c-down: #F87171;
+  --scroll-track: #0f1420;
+  --scroll-thumb: #2c3750;
+}
+
 /* Base styles */
 html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
+}
+
+body {
+  background: var(--c-ground);
+  color: var(--c-text);
+}
+
+/* Numeri/dati: monospaziato tabellare (allineamento in colonna) */
+.num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Perspective viewer sizing */
@@ -22,16 +70,16 @@ perspective-viewer {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--scroll-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: var(--scroll-thumb);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a1a1a1;
+  background: var(--c-muted);
 }
 
 /* Line clamp utility */
