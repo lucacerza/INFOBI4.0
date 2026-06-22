@@ -13,8 +13,7 @@
 ## Fase 1 — Stabilità: bug confermati (FONDAMENTA, prima di tutto)
 - [x] `connections.py`: import mancante di `settings` (crash test connessione)
 - [x] `query_engine.py`: variabile `start` non definita nel ramo flat-table (crash pivot)
-- [ ] SQLi residua in `execute_grid_query` (filtri numerici → parametrizzare)
-- [ ] SQLi residua in `havingModel` (→ parametrizzare)
+- [x] SQLi: chiusa l'intera classe (grid, havingModel, distinct search, identificatori pivot) + whitelist aggregazioni
 - [ ] Unificare formato filtri `FilterValue` vs `filterModel` (fix slicer: checkbox + "Seleziona tutti" + DropdownSlicer)
 - [ ] Persistere `widget_type` (backend `WidgetUpdate` + toggle)
 
@@ -31,7 +30,8 @@
 - [ ] Validazione SQL + stima costo prima del salvataggio report; versioning definizioni report
 
 ## Fase 3 — Test & CI (per rendere sicuri i passi successivi)
-- [ ] pytest backend (almeno `query_engine`, auth)
+> Anticipata: i test si scrivono e si eseguono ad **ogni** step, non solo qui.
+- [x] pytest backend — harness avviato (backend/tests/, `pytest.ini`, `requirements-dev.txt`); test SQL-safety + smoke. Da estendere per ogni nuova funzione.
 - [ ] vitest frontend
 - [ ] CI minimale (GitHub Actions): `tsc --noEmit` + `pytest`
 

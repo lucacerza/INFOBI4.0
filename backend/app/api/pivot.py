@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from app.db.database import get_db, Report, Connection
 from app.core.deps import get_current_user
 from app.core.security import decrypt_password
-from app.services.query_engine import QueryEngine, _build_safe_filter_clause
+from app.services.query_engine import QueryEngine, _build_safe_filter_clause, _sanitize_column_name
 from app.core.engine_pool import get_engine
 from app.services.cache import cache
 
@@ -214,7 +214,8 @@ async def execute_pivot_with_split(
     select_parts = []
 
     # Group by columns (split_by is already a list, don't wrap it again!)
-    all_groups = group_by + split_by
+    # Identificatori sanitizzati per prevenire injection via nome colonna
+    all_groups = [_sanitize_column_name(c) for c in (group_by + split_by)]
     for col in all_groups:
         if is_mssql:
             select_parts.append(f'[{col}]')
@@ -226,17 +227,19 @@ async def execute_pivot_with_split(
     for m in metrics:
         agg = m.get('aggregation', 'SUM').upper()
         field = m.get('field', '')
-        name = m.get('name', field)
+        name = _sanitize_column_name(m.get('name', field) or field)
 
         if field and agg in ['SUM', 'AVG', 'COUNT', 'MIN', 'MAX']:
             metric_names.append(name)
             # FIX: Handle COUNT(*) correctly without quoting *
             if field == '*':
                 select_parts.append(f'{agg}(*) AS [{name}]' if is_mssql else f'{agg}(*) AS "{name}"')
-            elif is_mssql:
-                select_parts.append(f'{agg}([{field}]) AS [{name}]')
             else:
-                select_parts.append(f'{agg}("{field}") AS "{name}"')
+                clean_field = _sanitize_column_name(field)
+                if is_mssql:
+                    select_parts.append(f'{agg}([{clean_field}]) AS [{name}]')
+                else:
+                    select_parts.append(f'{agg}("{clean_field}") AS "{name}"')
 
     # Log what we're using
     logger.info(f"📊 Metrics for pivot: {metric_names}")
@@ -507,51 +510,44 @@ async def get_distinct_values(
             "ssl_enabled": connection.ssl_enabled
         }
 
-        # Build distinct query with optional search filter
+        # Build distinct query (search value SEMPRE come bound param — SQL injection safe)
         base_query = report.query
+        safe_limit = int(limit)
+        is_mssql = connection.db_type == "mssql"
+        col_ref = f"[{column}]" if is_mssql else f'"{column}"'
+        params: dict = {}
 
         if search:
-            # Sanitize search term
-            search_safe = search.replace("'", "''")
-            if connection.db_type == "mssql":
-                distinct_query = f"""
-                    SELECT DISTINCT TOP {limit} [{column}] as value
-                    FROM ({base_query}) AS base
-                    WHERE [{column}] IS NOT NULL
-                      AND CAST([{column}] AS NVARCHAR(MAX)) LIKE '%{search_safe}%'
-                    ORDER BY [{column}]
-                """
-            else:
-                distinct_query = f"""
-                    SELECT DISTINCT {column} as value
-                    FROM ({base_query}) AS base
-                    WHERE {column} IS NOT NULL
-                      AND CAST({column} AS TEXT) ILIKE '%{search_safe}%'
-                    ORDER BY {column}
-                    LIMIT {limit}
-                """
+            params["search"] = f"%{search}%"
+            like_op = "LIKE" if is_mssql else "ILIKE"
+            cast_type = "NVARCHAR(MAX)" if is_mssql else "TEXT"
+            search_cond = f"AND CAST({col_ref} AS {cast_type}) {like_op} :search"
         else:
-            if connection.db_type == "mssql":
-                distinct_query = f"""
-                    SELECT DISTINCT TOP {limit} [{column}] as value
-                    FROM ({base_query}) AS base
-                    WHERE [{column}] IS NOT NULL
-                    ORDER BY [{column}]
-                """
-            else:
-                distinct_query = f"""
-                    SELECT DISTINCT {column} as value
-                    FROM ({base_query}) AS base
-                    WHERE {column} IS NOT NULL
-                    ORDER BY {column}
-                    LIMIT {limit}
-                """
+            search_cond = ""
+
+        if is_mssql:
+            distinct_query = f"""
+                SELECT DISTINCT TOP {safe_limit} {col_ref} as value
+                FROM ({base_query}) AS base
+                WHERE {col_ref} IS NOT NULL
+                  {search_cond}
+                ORDER BY {col_ref}
+            """
+        else:
+            distinct_query = f"""
+                SELECT DISTINCT {col_ref} as value
+                FROM ({base_query}) AS base
+                WHERE {col_ref} IS NOT NULL
+                  {search_cond}
+                ORDER BY {col_ref}
+                LIMIT {safe_limit}
+            """
 
         # Ensure pool is warm
         QueryEngine.ensure_pool_warm(connection.db_type, config)
 
-        # Execute query
-        arrow_table = QueryEngine._execute_query_sync(connection.db_type, config, distinct_query)
+        # Execute query (parametrizzata)
+        arrow_table = QueryEngine._execute_arrow_with_params_sync(connection.db_type, config, distinct_query, params)
 
         # Convert to list of values
         values = arrow_table.column("value").to_pylist()
