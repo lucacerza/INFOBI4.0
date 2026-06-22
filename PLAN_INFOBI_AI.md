@@ -36,7 +36,7 @@
 > Anticipata: i test si scrivono e si eseguono ad **ogni** step, non solo qui.
 - [x] pytest backend — harness avviato (backend/tests/, `pytest.ini`, `requirements-dev.txt`); test SQL-safety + smoke. Da estendere per ogni nuova funzione.
 - [x] vitest frontend — harness avviato (`npm test`); test dello store filtri. Da estendere per ogni nuova logica.
-- [ ] CI minimale (GitHub Actions): `tsc --noEmit` + `pytest`
+- [x] CI (GitHub Actions): job backend (`pytest`) + job frontend (`tsc --noEmit` + `vitest`) ad ogni push/PR. Rimosso `duckdb` (inutilizzato, no wheel py3.12) per far passare l'install.
 
 ## Fase 4 — Design system / UI (qualità estetica)
 - [ ] Design tokens (palette, scala tipografica, spacing) coerenti

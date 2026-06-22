@@ -40,5 +40,5 @@ python-dotenv==1.0.0
 httpx==0.26.0
 orjson==3.9.12
 
-# DuckDB for high-performance import mode
-duckdb==0.9.2
+# Nota: duckdb verrà reintrodotto nella Fase 7 (datawarehouse) con una
+# versione compatibile con Python 3.12 (la 0.9.2 non ha wheel ed era inutilizzata).
