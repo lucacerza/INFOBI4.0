@@ -48,3 +48,15 @@ def merge_rls(user_filters: Dict[str, Any], rls_filters: Dict[str, Any]) -> Dict
     merged = dict(user_filters or {})
     merged.update(rls_filters or {})
     return merged
+
+
+def apply_rls_to_filtermodel(filter_model: Dict[str, Any], rls_filters: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Inietta i filtri RLS (obbligatori) in un filterModel come FilterDef 'in'.
+    Usato dai path grid/drill che consumano oggetti FilterDef.
+    """
+    from app.models.schemas import FilterDef
+    merged = dict(filter_model or {})
+    for col, f in (rls_filters or {}).items():
+        merged[col] = FilterDef(filterType="set", type="in", filter=None, values=f.get("values", []))
+    return merged

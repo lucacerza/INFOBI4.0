@@ -2,7 +2,7 @@
 import asyncio
 from types import SimpleNamespace
 
-from app.services.rls import rules_to_filters, merge_rls, get_rls_filters
+from app.services.rls import rules_to_filters, merge_rls, get_rls_filters, apply_rls_to_filtermodel
 
 
 def _rule(column, values):
@@ -26,6 +26,16 @@ def test_merge_rls_overrides_user_filter():
     merged = merge_rls(user_filters, rls)
     assert merged["regione"]["values"] == ["Nord"]   # RLS obbligatorio, ha la precedenza
     assert merged["anno"]["value"] == 2026            # filtro utente non-RLS preservato
+
+
+def test_apply_rls_to_filtermodel_injects_and_overrides():
+    from app.models.schemas import FilterDef
+    fm = {"regione": FilterDef(type="in", filter=None, values=["Tutte"])}
+    rls = {"regione": {"type": "in", "values": ["Nord"]}, "anno": {"type": "in", "values": [2026]}}
+    merged = apply_rls_to_filtermodel(fm, rls)
+    assert merged["regione"].type == "in"
+    assert merged["regione"].values == ["Nord"]   # RLS sovrascrive il filtro utente
+    assert merged["anno"].values == [2026]         # nuova colonna RLS iniettata
 
 
 def test_superuser_bypass_no_db_access():

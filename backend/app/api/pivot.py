@@ -491,6 +491,14 @@ async def get_distinct_values(
         col_ref = f"[{column}]" if is_mssql else f'"{column}"'
         params: dict = {}
 
+        # RLS: restringe i valori distinti visibili (parametrizzato). Superuser bypassa.
+        rls = await get_rls_filters(db, user, report_id)
+        rls_where, rls_params = _build_safe_filter_clause(rls, is_mssql)
+        rls_cond = ""
+        if rls_where:
+            rls_cond = "AND " + rls_where[len("WHERE "):]
+            params.update(rls_params)
+
         if search:
             params["search"] = f"%{search}%"
             like_op = "LIKE" if is_mssql else "ILIKE"
@@ -505,6 +513,7 @@ async def get_distinct_values(
                 FROM ({base_query}) AS base
                 WHERE {col_ref} IS NOT NULL
                   {search_cond}
+                  {rls_cond}
                 ORDER BY {col_ref}
             """
         else:
@@ -513,6 +522,7 @@ async def get_distinct_values(
                 FROM ({base_query}) AS base
                 WHERE {col_ref} IS NOT NULL
                   {search_cond}
+                  {rls_cond}
                 ORDER BY {col_ref}
                 LIMIT {safe_limit}
             """

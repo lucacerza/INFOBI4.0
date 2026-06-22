@@ -5,15 +5,23 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-import polars as pl
 from app.db.database import get_db, Report, Connection
 from app.core.deps import get_current_user
 from app.core.security import decrypt_password
-from app.services.query_engine import QueryEngine
-from app.core.engine_pool import get_engine
+from app.services.query_engine import QueryEngine, _build_safe_filter_clause
+from app.services.rls import get_rls_filters
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+async def _query_with_rls(db, user, report, connection, config):
+    """Esegue la query del report applicando i filtri RLS (parametrizzati). Ritorna un DataFrame Polars."""
+    is_mssql = connection.db_type == "mssql"
+    rls = await get_rls_filters(db, user, report.id)
+    where_sql, params = _build_safe_filter_clause(rls, is_mssql)
+    query = f"SELECT * FROM ({report.query}) AS rls_base {where_sql}" if where_sql else report.query
+    return QueryEngine._execute_df_with_params_sync(connection.db_type, config, query, params)
 
 @router.get("/{report_id}/xlsx")
 async def export_xlsx(
@@ -46,9 +54,7 @@ async def export_xlsx(
     QueryEngine.ensure_pool_warm(connection.db_type, config)
 
     try:
-        engine = get_engine(connection.db_type, config)
-        with engine.connect() as conn:
-            df = pl.read_database(report.query, connection=conn)
+        df = await _query_with_rls(db, user, report, connection, config)
 
         # Write to Excel
         output = BytesIO()
@@ -97,9 +103,7 @@ async def export_csv(
     QueryEngine.ensure_pool_warm(connection.db_type, config)
 
     try:
-        engine = get_engine(connection.db_type, config)
-        with engine.connect() as conn:
-            df = pl.read_database(report.query, connection=conn)
+        df = await _query_with_rls(db, user, report, connection, config)
 
         output = BytesIO()
         df.write_csv(output)

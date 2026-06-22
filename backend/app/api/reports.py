@@ -11,6 +11,7 @@ from app.core.deps import get_current_user, get_current_admin, get_current_super
 from app.core.security import decrypt_password
 from app.models.schemas import ReportCreate, ReportUpdate, ReportResponse, GridRequest, PivotDrillRequest
 from app.services.query_engine import QueryEngine, query_engine
+from app.services.rls import get_rls_filters, apply_rls_to_filtermodel
 from app.services.cache import cache
 
 logger = logging.getLogger(__name__)
@@ -369,6 +370,10 @@ async def execute_grid_query(
         # Ensure pool is warm before query (eliminates cold start)
         QueryEngine.ensure_pool_warm(connection.db_type, config)
 
+        # RLS: inietta i filtri obbligatori nel filterModel (superuser bypassa)
+        rls = await get_rls_filters(db, user, report_id)
+        request.filterModel = apply_rls_to_filtermodel(request.filterModel, rls)
+
         rows, total, elapsed = await query_engine.execute_grid_query(
             connection.db_type,
             config,
@@ -421,6 +426,10 @@ async def execute_pivot_drill(
 
         # Ensure pool is warm before query (eliminates cold start)
         QueryEngine.ensure_pool_warm(connection.db_type, config)
+
+        # RLS: inietta i filtri obbligatori nel filterModel (superuser bypassa)
+        rls = await get_rls_filters(db, user, report_id)
+        request.filterModel = apply_rls_to_filtermodel(request.filterModel, rls)
 
         rows, total, elapsed_query = await query_engine.execute_pivot_drill(
             connection.db_type,
