@@ -191,6 +191,25 @@ class AuditLog(Base):
     detail = Column(Text)
 
 # ============================================
+# ROW-LEVEL SECURITY
+# ============================================
+class RlsRule(Base):
+    """
+    Regola di Row-Level Security: per un report, limita le righe visibili a un
+    soggetto (utente o ruolo) ai soli valori consentiti su una colonna.
+    Applicata come filtro server-side parametrizzato (IN).
+    """
+    __tablename__ = "rls_rules"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    report_id = Column(Integer, ForeignKey("reports.id", ondelete="CASCADE"), nullable=False)
+    subject_type = Column(String(20), nullable=False)   # 'user' | 'role'
+    subject = Column(String(255), nullable=False)        # username oppure nome ruolo
+    column = Column(String(255), nullable=False)
+    allowed_values = Column(JSON, default=[])            # valori consentiti (filtro IN)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# ============================================
 # INITIALIZATION
 # ============================================
 async def init_db():

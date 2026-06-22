@@ -26,7 +26,8 @@
 - [x] Backup automatico di `data/infobi.db` — sqlite3 backup API + rotazione + scheduler APScheduler (configurabile) + test
 - [x] Audit log — Step 2.3b: tabella `audit_log` + middleware (auto-audit di tutte le mutazioni CRUD) + login (successo/fallimento) + endpoint sola lettura superuser + test
 - [x] Rate limiting (middleware in-memory, configurabile) + query cost guard (cap righe configurabile `MAX_ROWS_PREVIEW`, rimosso hardcoded 10000) + test
-- [ ] Row-Level Security (RLS) applicativa per utente/ruolo
+- [x] RLS 2.6a: infrastruttura (tabella `rls_rules` + servizio + CRUD superuser) + wiring sul path pivot principale (filtri parametrizzati, inclusi nella cache key) + test
+- [ ] RLS 2.6b: agganciare gli altri path dati (pivot-drill, grid, export, distinct-values) per coprire tutte le vie di lettura
 - [ ] Validazione SQL + stima costo prima del salvataggio report; versioning definizioni report
 
 ## Fase 3 — Test & CI (per rendere sicuri i passi successivi)

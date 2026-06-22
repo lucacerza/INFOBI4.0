@@ -15,7 +15,7 @@ from app.core.ratelimit import RateLimiter
 from app.core.security import decode_token
 from app.db.database import init_db
 from app.services.audit import record_audit
-from app.api import auth, connections, reports, pivot, dashboards, export, users, audit
+from app.api import auth, connections, reports, pivot, dashboards, export, users, audit, rls
 
 # Metodi HTTP considerati "mutazioni" da auditare
 AUDIT_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -144,6 +144,7 @@ app.include_router(pivot.router, prefix="/api/pivot", tags=["Pivot"])
 app.include_router(dashboards.router, prefix="/api/dashboards", tags=["Dashboards"])
 app.include_router(export.router, prefix="/api/export", tags=["Export"])
 app.include_router(audit.router, prefix="/api/audit", tags=["Audit"])
+app.include_router(rls.router, prefix="/api/rls", tags=["RLS"])
 
 @app.get("/health")
 async def health():

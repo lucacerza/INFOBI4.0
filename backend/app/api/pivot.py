@@ -17,6 +17,7 @@ from app.db.database import get_db, Report, Connection
 from app.core.deps import get_current_user
 from app.core.security import decrypt_password
 from app.services.query_engine import QueryEngine, _build_safe_filter_clause, _sanitize_column_name
+from app.services.rls import get_rls_filters, merge_rls
 from app.core.limits import clamp_rows
 from app.core.engine_pool import get_engine
 from app.services.cache import cache
@@ -82,14 +83,19 @@ async def execute_pivot(
         raise HTTPException(status_code=404, detail="Report not found")
     
     report, connection = row
-    
+
+    # RLS: filtri obbligatori per utente/ruolo (il superuser non ha restrizioni).
+    # Inclusi anche nella cache key -> isolamento dei risultati per utente.
+    rls_filters = await get_rls_filters(db, user, report_id)
+    effective_filters = merge_rls(request.filters, rls_filters)
+
     # Build config hash for caching
     config = {
         "query": report.query,
         "group_by": request.group_by,
         "split_by": request.split_by,
         "metrics": [m.model_dump() for m in request.metrics],
-        "filters": request.filters,
+        "filters": effective_filters,
         "calculate_delta": request.calculate_delta
     }
     config_hash = QueryEngine.hash_config(config)
@@ -136,7 +142,7 @@ async def execute_pivot(
                 group_by,
                 split_by,
                 metrics,
-                request.filters,
+                effective_filters,
                 request.calculate_delta,
                 request.limit  # Pass limit for preview mode
             )
@@ -148,7 +154,7 @@ async def execute_pivot(
                 report.query,
                 group_by,
                 metrics,
-                request.filters,
+                effective_filters,
                 request.limit  # Pass limit for preview mode
             )
         
