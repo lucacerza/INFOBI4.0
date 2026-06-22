@@ -17,6 +17,7 @@ from app.db.database import get_db, Report, Connection
 from app.core.deps import get_current_user
 from app.core.security import decrypt_password
 from app.services.query_engine import QueryEngine, _build_safe_filter_clause, _sanitize_column_name
+from app.core.limits import clamp_rows
 from app.core.engine_pool import get_engine
 from app.services.cache import cache
 
@@ -253,8 +254,8 @@ async def execute_pivot_with_split(
     # Build WHERE clause using parameterized queries (SQL injection safe)
     where_sql, filter_params = _build_safe_filter_clause(filters, is_mssql)
 
-    # Final SQL with safe limit handling
-    safe_limit = int(limit) if limit else None
+    # Final SQL with safe limit handling (cost guard: cap configurabile MAX_ROWS_PREVIEW)
+    safe_limit = clamp_rows(limit)
     if safe_limit and is_mssql:
         sql = f"SELECT TOP {safe_limit} {', '.join(select_parts)} FROM ({base_query}) AS base_data {where_sql} GROUP BY {group_clause}"
     elif safe_limit:

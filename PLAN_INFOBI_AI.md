@@ -25,7 +25,7 @@
 - [x] Restringere gli `except Exception` larghi (loggare l'errore reale con traceback, no `except:` nudi) + logging strutturato (LOG_LEVEL) — Step 2.3a
 - [x] Backup automatico di `data/infobi.db` — sqlite3 backup API + rotazione + scheduler APScheduler (configurabile) + test
 - [x] Audit log — Step 2.3b: tabella `audit_log` + middleware (auto-audit di tutte le mutazioni CRUD) + login (successo/fallimento) + endpoint sola lettura superuser + test
-- [ ] Rate limiting / query cost guard (limite righe + timeout per ruolo)
+- [x] Rate limiting (middleware in-memory, configurabile) + query cost guard (cap righe configurabile `MAX_ROWS_PREVIEW`, rimosso hardcoded 10000) + test
 - [ ] Row-Level Security (RLS) applicativa per utente/ruolo
 - [ ] Validazione SQL + stima costo prima del salvataggio report; versioning definizioni report
 

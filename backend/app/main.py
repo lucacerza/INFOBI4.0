@@ -7,10 +7,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import ORJSONResponse
+from fastapi.responses import ORJSONResponse, JSONResponse
 
 from app.core.config import settings, security_warnings
 from app.core.logging_config import configure_logging
+from app.core.ratelimit import RateLimiter
 from app.core.security import decode_token
 from app.db.database import init_db
 from app.services.audit import record_audit
@@ -82,6 +83,20 @@ def _username_from_request(request: Request) -> str | None:
         if payload:
             return payload.get("sub")
     return None
+
+
+# Rate limiter condiviso (per istanza)
+_rate_limiter = RateLimiter(settings.RATE_LIMIT_RPM, settings.RATE_LIMIT_WINDOW_SECONDS)
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Limita le richieste /api per utente (o IP) entro una finestra scorrevole."""
+    if settings.RATE_LIMIT_ENABLED and request.url.path.startswith("/api"):
+        key = _username_from_request(request) or (request.client.host if request.client else "anon")
+        if not _rate_limiter.allow(key):
+            return JSONResponse(status_code=429, content={"detail": "Troppe richieste, riprova tra poco"})
+    return await call_next(request)
 
 
 @app.middleware("http")

@@ -18,6 +18,7 @@ from io import BytesIO
 from sqlalchemy import text
 from app.models.schemas import GridRequest, PivotDrillRequest
 from app.core.engine_pool import get_engine
+from app.core.limits import clamp_rows
 
 logger = logging.getLogger(__name__)
 
@@ -436,7 +437,7 @@ class QueryEngine:
 
             # CASE 1: No group_by and no metrics → FLAT TABLE (raw data with all columns)
             if not group_by and not metrics:
-                row_limit = limit if limit else 10000
+                row_limit = clamp_rows(limit)  # cost guard: cap configurabile (MAX_ROWS_PREVIEW)
                 limited_query = f"SELECT TOP {row_limit} * FROM ({base_query}) AS raw_data" if is_mssql else f"SELECT * FROM ({base_query}) AS raw_data LIMIT {row_limit}"
 
                 loop = asyncio.get_event_loop()

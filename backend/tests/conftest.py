@@ -10,6 +10,7 @@ _TEST_DB = pathlib.Path(__file__).parent / "_pytest_infobi.db"
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_TEST_DB.as_posix()}"
 os.environ.setdefault("SECRET_KEY", "test-secret-key-not-for-prod")
 os.environ["BACKUP_ENABLED"] = "false"  # niente scheduler durante i test
+os.environ["RATE_LIMIT_ENABLED"] = "false"  # niente rate limiting nei test (abilitato esplicitamente dove serve)
 
 # DB pulito a inizio sessione di test
 if _TEST_DB.exists():

@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     QUERY_TIMEOUT: int = 300  # 5 minutes
     CONNECTION_TIMEOUT: int = 180  # 3 minutes for connection test with warm-up
 
+    # Rate limiting (per utente/IP, finestra scorrevole in memoria)
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_RPM: int = 120              # richieste max per finestra
+    RATE_LIMIT_WINDOW_SECONDS: int = 60
+
     # Backup automatico del DB applicativo (SQLite)
     BACKUP_ENABLED: bool = True
     BACKUP_DIR: str = "./data/backups"
