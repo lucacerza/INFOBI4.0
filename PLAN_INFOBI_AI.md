@@ -22,7 +22,7 @@
 - [x] Rimuovere script orfani/backdoor: `reset_admin.py`, `check_db.py`, `fix_db.py`
 - [x] Rimuovere dead code residuo: blocco Delta `if False` (pivot.py), alias inutili `deps.py`, `_execute_df_sync`/`get_column_values` (query_engine), schemi morti `schemas.py` (PivotRequest + Dashboard/Widget). NB: la 2ª `formatNumber` di BiChart era in realtà USATA (KPI) → mantenuta.
 - [x] 2.8a: Client API unico `apiClient` (token + 401 + parsing errori) + `api.ts` riscritto su di esso (via fetch, niente axios) + test
-- [ ] 2.8b: Migrare le ~28 `fetch()` grezze nei componenti su `apiClient`
+- [x] 2.8b: Migrate tutte le `fetch()` grezze (11 file) su `apiClient` — token e 401 centralizzati ovunque, rimossi i `getToken` locali
 - [x] Restringere gli `except Exception` larghi (loggare l'errore reale con traceback, no `except:` nudi) + logging strutturato (LOG_LEVEL) — Step 2.3a
 - [x] Backup automatico di `data/infobi.db` — sqlite3 backup API + rotazione + scheduler APScheduler (configurabile) + test
 - [x] Audit log — Step 2.3b: tabella `audit_log` + middleware (auto-audit di tutte le mutazioni CRUD) + login (successo/fallimento) + endpoint sola lettura superuser + test

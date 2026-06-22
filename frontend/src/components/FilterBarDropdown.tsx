@@ -5,6 +5,7 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import { Search, X, ChevronDown, Loader2, Check } from 'lucide-react';
+import { apiFetch } from '../services/apiClient';
 
 interface FilterBarDropdownProps {
   reportId: number;
@@ -32,8 +33,6 @@ export default function FilterBarDropdown({
   const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const getToken = () => localStorage.getItem('token');
-
   // Lazy load distinct values on first open
   useEffect(() => {
     if (isOpen && !loaded) {
@@ -57,9 +56,7 @@ export default function FilterBarDropdown({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/pivot/${reportId}/distinct/${column}`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
+      const res = await apiFetch(`/api/pivot/${reportId}/distinct/${column}`);
       if (res.ok) {
         const data = await res.json();
         const values = data.values.map((v: any) => String(v));

@@ -9,6 +9,7 @@ import {
   ArrowLeft, Download, RefreshCw, Loader2, FileSpreadsheet,
   FileText, Clock, Database, Zap, Edit, LayoutGrid
 } from 'lucide-react';
+import { apiFetch } from '../services/apiClient';
 
 interface Report {
   id: number;
@@ -33,8 +34,6 @@ export default function ReportViewerPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState({ rows: 0, time: 0, cached: false });
 
-  const getToken = () => localStorage.getItem('token');
-
   // Load on mount
   useEffect(() => {
     if (id) {
@@ -48,13 +47,11 @@ export default function ReportViewerPage() {
     
     try {
       // Get report metadata only
-      const reportRes = await fetch(`/api/reports/${reportId}`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
+      const reportRes = await apiFetch(`/api/reports/${reportId}`);
       if (!reportRes.ok) throw new Error('Report non trovato');
       const reportData = await reportRes.json();
       setReport(reportData);
-      
+
     } catch (err: any) {
       console.error('Load error:', err);
       setError(err.message || 'Errore sconosciuto');
@@ -66,10 +63,7 @@ export default function ReportViewerPage() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await fetch(`/api/reports/${reportId}/refresh-cache`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
+      await apiFetch(`/api/reports/${reportId}/refresh-cache`, { method: 'POST' });
       alert('Cache aggiornata! Ricarica la pagina pivot per vedere i nuovi dati.');
     } catch (err) {
       console.error('Refresh failed:', err);

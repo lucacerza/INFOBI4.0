@@ -19,6 +19,7 @@ import {
   ShieldAlert, ShieldCheck
 } from 'lucide-react';
 import { toast } from '../stores/toastStore';
+import { apiFetch } from '../services/apiClient';
 
 interface User {
   id: number;
@@ -79,16 +80,12 @@ export default function UsersPage() {
     loadData();
   }, []);
 
-  const getToken = () => localStorage.getItem('token');
-
   const loadData = async () => {
     try {
-      const headers = { 'Authorization': `Bearer ${getToken()}` };
-      
       const [usersRes, reportsRes, dashboardsRes] = await Promise.all([
-        fetch(`${API_BASE}/users`, { headers }),
-        fetch(`${API_BASE}/reports`, { headers }),
-        fetch(`${API_BASE}/dashboards`, { headers })
+        apiFetch(`${API_BASE}/users`),
+        apiFetch(`${API_BASE}/reports`),
+        apiFetch(`${API_BASE}/dashboards`)
       ]);
       
       if (usersRes.ok) setUsers(await usersRes.json());
@@ -133,9 +130,7 @@ export default function UsersPage() {
     
     // Load user's current assignments
     try {
-      const res = await fetch(`${API_BASE}/users/${user.id}`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
+      const res = await apiFetch(`${API_BASE}/users/${user.id}`);
       if (res.ok) {
         const data = await res.json();
         setAssignedReports(data.report_ids || []);
@@ -152,15 +147,9 @@ export default function UsersPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const headers = {
-        'Authorization': `Bearer ${getToken()}`,
-        'Content-Type': 'application/json'
-      };
-      
       if (modalMode === 'create') {
-        const res = await fetch(`${API_BASE}/users`, {
+        const res = await apiFetch(`${API_BASE}/users`, {
           method: 'POST',
-          headers,
           body: JSON.stringify(form)
         });
         if (!res.ok) {
@@ -180,9 +169,8 @@ export default function UsersPage() {
           delete updateData.is_active;
         }
 
-        const res = await fetch(`${API_BASE}/users/${selectedUser.id}`, {
+        const res = await apiFetch(`${API_BASE}/users/${selectedUser.id}`, {
           method: 'PUT',
-          headers,
           body: JSON.stringify(updateData)
         });
         if (!res.ok) {
@@ -192,16 +180,14 @@ export default function UsersPage() {
         }
       } else if (modalMode === 'assign' && selectedUser) {
         // Save report assignments
-        await fetch(`${API_BASE}/users/${selectedUser.id}/reports`, {
+        await apiFetch(`${API_BASE}/users/${selectedUser.id}/reports`, {
           method: 'POST',
-          headers,
           body: JSON.stringify({ report_ids: assignedReports, can_edit: false })
         });
-        
+
         // Save dashboard assignments
-        await fetch(`${API_BASE}/users/${selectedUser.id}/dashboards`, {
+        await apiFetch(`${API_BASE}/users/${selectedUser.id}/dashboards`, {
           method: 'POST',
-          headers,
           body: JSON.stringify({ dashboard_ids: assignedDashboards, can_edit: false })
         });
       }
@@ -220,9 +206,8 @@ export default function UsersPage() {
     if (!confirm(`Eliminare l'utente "${user.username}"?`)) return;
 
     try {
-      const res = await fetch(`${API_BASE}/users/${user.id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${getToken()}` }
+      const res = await apiFetch(`${API_BASE}/users/${user.id}`, {
+        method: 'DELETE'
       });
       if (!res.ok) {
         const err = await res.json();

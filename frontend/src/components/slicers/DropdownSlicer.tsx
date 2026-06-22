@@ -9,6 +9,7 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, Search, X, Loader2 } from 'lucide-react';
+import { apiFetch } from '../../services/apiClient';
 
 interface DropdownSlicerProps {
   reportId: number;
@@ -33,8 +34,6 @@ export default function DropdownSlicer({
   const [error, setError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const getToken = () => localStorage.getItem('token');
-
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -53,9 +52,7 @@ export default function DropdownSlicer({
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/pivot/${reportId}/distinct/${column}`, {
-          headers: { 'Authorization': `Bearer ${getToken()}` }
-        });
+        const res = await apiFetch(`/api/pivot/${reportId}/distinct/${column}`);
         if (res.ok) {
           const data = await res.json();
           const values = data.values.map((v: any) => String(v));

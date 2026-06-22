@@ -11,6 +11,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Save, Loader2, Play, CheckCircle, XCircle, AlertCircle, Settings, Eye } from 'lucide-react';
 import { logger } from '../utils/logger';
+import { apiFetch } from '../services/apiClient';
 import BiGridConfig from '../components/BiGridConfig';
 import TreeDataGrid from '../components/TreeDataGrid';
 
@@ -74,8 +75,6 @@ export default function ReportEditorPage() {
     filters: []
   });
 
-  const getToken = () => localStorage.getItem('token');
-
   useEffect(() => {
     loadConnections();
     if (!isNew) loadReport();
@@ -83,9 +82,7 @@ export default function ReportEditorPage() {
 
   const loadConnections = async () => {
     try {
-      const res = await fetch('/api/connections', {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
+      const res = await apiFetch('/api/connections');
       const data = await res.json();
       setConnections(data);
       if (data.length > 0 && !form.connection_id) {
@@ -98,9 +95,7 @@ export default function ReportEditorPage() {
 
   const loadReport = async () => {
     try {
-      const res = await fetch(`/api/reports/${id}`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
+      const res = await apiFetch(`/api/reports/${id}`);
       const data = await res.json();
       setForm({
         name: data.name,
@@ -114,9 +109,7 @@ export default function ReportEditorPage() {
 
       // Load saved pivot config if exists
       try {
-        const configRes = await fetch(`/api/pivot/${id}/config`, {
-          headers: { 'Authorization': `Bearer ${getToken()}` }
-        });
+        const configRes = await apiFetch(`/api/pivot/${id}/config`);
         if (configRes.ok) {
           const savedConfig = await configRes.json();
           setPivotConfig(savedConfig);
@@ -139,12 +132,8 @@ export default function ReportEditorPage() {
     setTestResult(null);
 
     try {
-      const res = await fetch('/api/reports/test-query', {
+      const res = await apiFetch('/api/reports/test-query', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getToken()}`
-        },
         body: JSON.stringify({
           connection_id: form.connection_id,
           query: form.query
@@ -177,12 +166,8 @@ export default function ReportEditorPage() {
 
     setSaving(true);
     try {
-      const res = await fetch(isNew ? '/api/reports' : `/api/reports/${id}`, {
+      const res = await apiFetch(isNew ? '/api/reports' : `/api/reports/${id}`, {
         method: isNew ? 'POST' : 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getToken()}`
-        },
         body: JSON.stringify({
           ...form,
           default_group_by: [],
@@ -213,19 +198,15 @@ export default function ReportEditorPage() {
 
     // Load schema for pivot configuration
     try {
-      const schemaRes = await fetch(`/api/pivot/${id}/schema`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
+      const schemaRes = await apiFetch(`/api/pivot/${id}/schema`);
       if (!schemaRes.ok) throw new Error('Schema non disponibile');
       const schemaData = await schemaRes.json();
       setSchema(schemaData);
 
       // Try to load existing config
       try {
-          const configRes = await fetch(`/api/pivot/${id}/config`, {
-            headers: { 'Authorization': `Bearer ${getToken()}` }
-          });
-          
+          const configRes = await apiFetch(`/api/pivot/${id}/config`);
+
           if (configRes.ok) {
               const savedConfig = await configRes.json();
               if (savedConfig.rows?.length > 0 || savedConfig.columns?.length > 0 || savedConfig.values?.length > 0) {
@@ -271,12 +252,8 @@ export default function ReportEditorPage() {
     if (!id) return;
 
     try {
-      const res = await fetch(`/api/pivot/${id}/config`, {
+      const res = await apiFetch(`/api/pivot/${id}/config`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getToken()}`
-        },
         body: JSON.stringify(pivotConfig)
       });
 
@@ -296,15 +273,11 @@ export default function ReportEditorPage() {
 
     // Auto-save config before navigating
     try {
-      await fetch(`/api/pivot/${id}/config`, {
+      await apiFetch(`/api/pivot/${id}/config`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getToken()}`
-        },
         body: JSON.stringify(pivotConfig)
       });
-      
+
       // Navigate after successful save
       navigate(`/reports/${id}/pivot`);
     } catch (err) {

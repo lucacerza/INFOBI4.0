@@ -9,6 +9,7 @@
  */
 import { useState, useEffect } from 'react';
 import { Search, Check, X, Loader2 } from 'lucide-react';
+import { apiFetch } from '../../services/apiClient';
 
 interface ListSlicerProps {
   reportId: number;
@@ -33,17 +34,13 @@ export default function ListSlicer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const getToken = () => localStorage.getItem('token');
-
   // Load distinct values from backend
   useEffect(() => {
     const loadValues = async () => {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/pivot/${reportId}/distinct/${column}`, {
-          headers: { 'Authorization': `Bearer ${getToken()}` }
-        });
+        const res = await apiFetch(`/api/pivot/${reportId}/distinct/${column}`);
         if (res.ok) {
           const data = await res.json();
           const values = data.values.map((v: any) => String(v));

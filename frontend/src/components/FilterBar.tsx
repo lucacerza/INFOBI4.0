@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Filter, Plus, X, Loader2 } from 'lucide-react';
 import FilterBarDropdown from './FilterBarDropdown';
 import { selectedValuesOf } from '../stores/dashboardStore';
+import { apiFetch } from '../services/apiClient';
 
 export interface FilterBarConfig {
   reportId: number;
@@ -195,8 +196,6 @@ function AddFilterPopover({
   const [loadingSchema, setLoadingSchema] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
 
-  const getToken = () => localStorage.getItem('token');
-
   // Close on click outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -216,9 +215,7 @@ function AddFilterPopover({
     if (!selectedReport) return;
     setLoadingSchema(true);
     setSchema(null);
-    fetch(`/api/pivot/${selectedReport}/schema`, {
-      headers: { 'Authorization': `Bearer ${getToken()}` }
-    })
+    apiFetch(`/api/pivot/${selectedReport}/schema`)
       .then(res => res.json())
       .then(data => setSchema(data))
       .catch(() => setSchema(null))

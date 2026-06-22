@@ -16,6 +16,7 @@ import {
   Table, BarChart3, Settings, SlidersHorizontal
 } from 'lucide-react';
 import { reportsApi, pivotApi } from '../services/api';
+import { apiFetch } from '../services/apiClient';
 import { toast } from '../stores/toastStore';
 
 interface Widget {
@@ -62,8 +63,6 @@ export default function DashboardViewerPage() {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
 
-  const getToken = () => localStorage.getItem('token');
-
   useEffect(() => {
     // Reset filters when changing dashboard
     setStoreDashboard(dashboardId);
@@ -73,9 +72,7 @@ export default function DashboardViewerPage() {
 
   const loadDashboard = async () => {
     try {
-      const res = await fetch(`/api/dashboards/${dashboardId}`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
+      const res = await apiFetch(`/api/dashboards/${dashboardId}`);
       if (res.ok) {
         const data = await res.json();
         setDashboard(data);
@@ -90,9 +87,7 @@ export default function DashboardViewerPage() {
 
   const loadReports = async () => {
     try {
-      const res = await fetch('/api/reports', {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
+      const res = await apiFetch('/api/reports');
       if (res.ok) {
         setReports(await res.json());
       }
@@ -111,9 +106,7 @@ export default function DashboardViewerPage() {
 
       try {
         // First, try to get the saved report configuration
-        const configRes = await fetch(`/api/pivot/${reportId}/config`, {
-          headers: { 'Authorization': `Bearer ${getToken()}` }
-        });
+        const configRes = await apiFetch(`/api/pivot/${reportId}/config`);
 
         if (configRes.ok) {
           const savedConfig = await configRes.json();
@@ -166,12 +159,8 @@ export default function DashboardViewerPage() {
         console.warn('Could not get config for widget:', e);
       }
 
-      const res = await fetch(`/api/dashboards/${dashboardId}/widgets`, {
+      const res = await apiFetch(`/api/dashboards/${dashboardId}/widgets`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${getToken()}`,
-          'Content-Type': 'application/json'
-        },
         body: JSON.stringify({
           report_id: reportId,
           title: report.name,
@@ -196,12 +185,8 @@ export default function DashboardViewerPage() {
     if (!report) return;
 
     try {
-      const res = await fetch(`/api/dashboards/${dashboardId}/widgets`, {
+      const res = await apiFetch(`/api/dashboards/${dashboardId}/widgets`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${getToken()}`,
-          'Content-Type': 'application/json'
-        },
         body: JSON.stringify({
           report_id: reportId,
           title: column, // Use column name as title
@@ -232,9 +217,8 @@ export default function DashboardViewerPage() {
     const widget = widgets.find(w => w.id === widgetId);
 
     try {
-      await fetch(`/api/dashboards/${dashboardId}/widgets/${widgetId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${getToken()}` }
+      await apiFetch(`/api/dashboards/${dashboardId}/widgets/${widgetId}`, {
+        method: 'DELETE'
       });
       setWidgets(widgets.filter(w => w.id !== widgetId));
 
@@ -257,12 +241,8 @@ export default function DashboardViewerPage() {
 
     // Persist to backend
     try {
-      await fetch(`/api/dashboards/${dashboardId}/widgets/${widgetId}`, {
+      await apiFetch(`/api/dashboards/${dashboardId}/widgets/${widgetId}`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${getToken()}`,
-          'Content-Type': 'application/json'
-        },
         body: JSON.stringify({ config: newConfig })
       });
     } catch (err) {
@@ -283,12 +263,8 @@ export default function DashboardViewerPage() {
 
     // Persist to backend
     try {
-      await fetch(`/api/dashboards/${dashboardId}/widgets/${widgetId}`, {
+      await apiFetch(`/api/dashboards/${dashboardId}/widgets/${widgetId}`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${getToken()}`,
-          'Content-Type': 'application/json'
-        },
         body: JSON.stringify({ widget_type: newType })
       });
     } catch (err) {
@@ -629,15 +605,11 @@ function WidgetSettingsModal({
   const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState<Widget['config']>(widget.config || {});
 
-  const getToken = () => localStorage.getItem('token');
-
   // Load report schema
   useEffect(() => {
     const loadSchema = async () => {
       try {
-        const res = await fetch(`/api/pivot/${widget.report_id}/schema`, {
-          headers: { 'Authorization': `Bearer ${getToken()}` }
-        });
+        const res = await apiFetch(`/api/pivot/${widget.report_id}/schema`);
         if (res.ok) {
           setSchema(await res.json());
         }
@@ -863,17 +835,13 @@ function AddWidgetModal({
   const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
   const [slicerType, setSlicerType] = useState<'list' | 'dropdown'>('list');
 
-  const getToken = () => localStorage.getItem('token');
-
   // Load schema when report selected and slicer type chosen
   useEffect(() => {
     if (!selectedReport || widgetType !== 'slicer') { setSchema(null); return; }
     setLoadingSchema(true);
     setSchema(null);
     setSelectedColumn(null);
-    fetch(`/api/pivot/${selectedReport}/schema`, {
-      headers: { 'Authorization': `Bearer ${getToken()}` }
-    })
+    apiFetch(`/api/pivot/${selectedReport}/schema`)
       .then(res => res.json())
       .then(data => setSchema(data))
       .catch(() => setSchema(null))

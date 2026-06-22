@@ -11,6 +11,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { logger } from '../utils/logger';
+import { apiFetch } from '../services/apiClient';
 import TreeDataGrid from '../components/TreeDataGrid';
 import BiGridConfig from '../components/BiGridConfig';
 import {
@@ -59,8 +60,6 @@ export default function ReportPivotPage() {
     filters: []
   });
 
-  const getToken = () => localStorage.getItem('token');
-
   // Load report and schema
   useEffect(() => {
     if (id) {
@@ -72,17 +71,13 @@ export default function ReportPivotPage() {
     setLoading(true);
     try {
       // Get report metadata
-      const reportRes = await fetch(`/api/reports/${reportId}`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
+      const reportRes = await apiFetch(`/api/reports/${reportId}`);
       if (!reportRes.ok) throw new Error('Report non trovato');
       const reportData = await reportRes.json();
       setReport(reportData);
 
       // Get schema for pivot builder
-      const schemaRes = await fetch(`/api/pivot/${reportId}/schema`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
+      const schemaRes = await apiFetch(`/api/pivot/${reportId}/schema`);
       if (!schemaRes.ok) throw new Error('Schema non disponibile');
       const schemaData = await schemaRes.json();
       setSchema(schemaData);
@@ -90,9 +85,7 @@ export default function ReportPivotPage() {
       // Load SAVED pivot configuration from DB (if exists)
       let initialConfig: PivotConfig;
       try {
-        const configRes = await fetch(`/api/pivot/${reportId}/config`, {
-          headers: { 'Authorization': `Bearer ${getToken()}` }
-        });
+        const configRes = await apiFetch(`/api/pivot/${reportId}/config`);
         if (configRes.ok) {
           const savedConfig = await configRes.json();
           // Use saved config if it has data

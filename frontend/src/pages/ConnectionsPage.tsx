@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { connectionsApi } from '../services/api';
+import { apiFetch } from '../services/apiClient';
 import { 
   Database, Plus, Trash2, Edit, Loader2, 
   Server, TestTube, CheckCircle, XCircle, Info, ArrowLeft
@@ -131,12 +132,8 @@ export default function ConnectionsPage() {
     setTestResult(null);
     
     try {
-      const response = await fetch('/api/connections/test-new', {
+      const response = await apiFetch('/api/connections/test-new', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
         body: JSON.stringify(form)
       });
       

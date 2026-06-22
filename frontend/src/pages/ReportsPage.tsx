@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { reportsApi } from '../services/api';
+import { apiFetch } from '../services/apiClient';
 import { useAuthStore } from '../stores/authStore';
 import {
   FileText,
@@ -56,11 +57,7 @@ export default function ReportsPage() {
     }
 
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`/api/reports/${reportId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const res = await apiFetch(`/api/reports/${reportId}`, { method: 'DELETE' });
 
       if (!res.ok) throw new Error('Errore durante l\'eliminazione');
 
