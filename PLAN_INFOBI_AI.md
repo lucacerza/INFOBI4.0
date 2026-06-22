@@ -18,7 +18,7 @@
 - [x] Persistere `widget_type` (backend `WidgetUpdate` + toggle) — + test d'integrazione (harness DB isolato)
 
 ## Fase 2 — Sicurezza & pulizia
-- [ ] Separare `SECRET_KEY` → `JWT_SECRET` + `DATA_ENCRYPTION_KEY`; validazione `.env` all'avvio (rifiuto default in prod)
+- [x] Separare `SECRET_KEY` → `JWT_SECRET` + `DATA_ENCRYPTION_KEY` (fallback backward-compatible); validazione `.env` all'avvio (rifiuto default in prod) + test
 - [x] Rimuovere script orfani/backdoor: `reset_admin.py`, `check_db.py`, `fix_db.py`
 - [x] Rimuovere dead code residuo: blocco Delta `if False` (pivot.py), alias inutili `deps.py`, `_execute_df_sync`/`get_column_values` (query_engine), schemi morti `schemas.py` (PivotRequest + Dashboard/Widget). NB: la 2ª `formatNumber` di BiChart era in realtà USATA (KPI) → mantenuta.
 - [ ] Standardizzare `api.ts` (usarlo ovunque o rimuoverlo)

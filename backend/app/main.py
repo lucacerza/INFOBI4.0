@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import ORJSONResponse
 
-from app.core.config import settings
+from app.core.config import settings, security_warnings
 from app.db.database import init_db
 from app.api import auth, connections, reports, pivot, dashboards, export, users
 
@@ -21,6 +21,18 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Initialize services on startup"""
     logger.info("🚀 Starting INFOBI 4.0...")
+
+    # Validazione sicurezza chiavi: in produzione rifiuta l'avvio con chiavi di default
+    warnings = security_warnings()
+    if warnings:
+        if settings.is_production:
+            raise RuntimeError(
+                "Avvio rifiutato: configurazione insicura in produzione -> " + "; ".join(warnings)
+                + " (imposta JWT_SECRET e DATA_ENCRYPTION_KEY nel .env)"
+            )
+        for w in warnings:
+            logger.warning(f"⚠️  SICUREZZA: {w} — imposta le chiavi nel .env prima della produzione")
+
     await init_db()
     logger.info("✅ Database initialized")
 
