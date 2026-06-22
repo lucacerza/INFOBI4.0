@@ -8,6 +8,7 @@ from sqlalchemy import select, text
 from typing import List
 from pydantic import BaseModel
 from app.db.database import get_db, Connection
+from app.core.config import settings
 from app.core.deps import get_current_user, get_current_admin, get_current_superuser
 from app.core.security import encrypt_password, decrypt_password
 from app.models.schemas import ConnectionCreate, ConnectionUpdate, ConnectionResponse
