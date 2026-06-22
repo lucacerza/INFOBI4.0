@@ -306,13 +306,6 @@ class QueryEngine:
             return df.to_arrow()
 
     @staticmethod
-    def _execute_df_sync(db_type: str, config: dict, query: str) -> pl.DataFrame:
-        """Synchronous query execution returning Polars DataFrame (for Pivot/Split)"""
-        engine = get_engine(db_type, config)
-        with engine.connect() as conn:
-            return pl.read_database(query, connection=conn)
-
-    @staticmethod
     def _execute_df_with_params_sync(
         db_type: str,
         config: dict,
@@ -962,26 +955,6 @@ class QueryEngine:
         except Exception as e:
             logger.error(f"Pivot drill error: {e}")
             raise
-
-    @staticmethod
-    async def get_column_values(db_type: str, config: dict, base_query: str, column: str) -> List[Any]:
-        """Fetch distinct sorted values for a column (used for Pivot Headers)"""
-        try:
-             # Sanitization
-             clean_col = "".join(c for c in column if c.isalnum() or c in '_')
-             
-             query = f"SELECT DISTINCT {clean_col} FROM ({base_query}) AS base ORDER BY {clean_col}"
-             engine = get_engine(db_type, config)
-             with engine.connect() as conn:
-                 df = pl.read_database(query, connection=conn)
-             
-             # Handle potential None/Null values
-             values = df[clean_col].to_list()
-             return [v for v in values if v is not None]
-             
-        except Exception as e:
-            logger.error(f"Get values error: {e}")
-            return []
 
     @staticmethod
     def hash_config(config: dict) -> str:

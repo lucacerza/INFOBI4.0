@@ -128,14 +128,6 @@ class ReportResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# Pivot Request
-class PivotRequest(BaseModel):
-    group_by: List[str] = []
-    split_by: Optional[str] = None
-    metrics: List[MetricDefinition] = []
-    filters: Dict[str, Any] = {}
-    sort: Optional[List[Dict[str, str]]] = None
-
 # --- NEW MODELS FOR LAZY LOADING ---
 
 class SortModel(BaseModel):
@@ -176,35 +168,5 @@ class PivotDrillRequest(BaseModel):
     startRow: Optional[int] = 0
     endRow: Optional[int] = 100
 
-# Dashboard
-class WidgetPosition(BaseModel):
-    x: int
-    y: int
-    w: int
-    h: int
-
-class WidgetCreate(BaseModel):
-    report_id: int
-    widget_type: str = "grid"
-    title: Optional[str] = None
-    config: Dict[str, Any] = {}
-    position: WidgetPosition
-
-class DashboardCreate(BaseModel):
-    name: str
-    description: Optional[str] = None
-    auto_refresh: bool = False
-    refresh_interval: int = 300
-
-class DashboardResponse(BaseModel):
-    id: int
-    name: str
-    description: Optional[str]
-    layout: Dict[str, Any]
-    auto_refresh: bool
-    refresh_interval: int
-    widgets: List[dict] = []
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
+# Nota: gli schemi Dashboard/Widget (create/response) sono definiti
+# localmente in app/api/dashboards.py, che è la fonte di verità.

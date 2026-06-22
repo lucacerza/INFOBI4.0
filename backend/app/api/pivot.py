@@ -340,39 +340,6 @@ async def execute_pivot_with_split(
         # No split_by: just return aggregated data
         result_df = df
     
-    # Calculate Delta columns if requested
-    # DISABLED: User doesn't need Delta functionality (causes arithmetic errors on mixed types)
-    if False and calculate_delta and split_by:
-        # Get the split_by column values (e.g., years)
-        split_values = sorted([c for c in result_df.columns if c not in group_by])
-        
-        # If we have at least 2 periods, calculate delta
-        if len(split_values) >= 2:
-            # Get last two periods for comparison
-            period_cols = [c for c in split_values if c not in group_by]
-            if len(period_cols) >= 2:
-                # Sort to get chronological order
-                period_cols_sorted = sorted(period_cols, key=lambda x: str(x))
-                prev_period = period_cols_sorted[-2]
-                curr_period = period_cols_sorted[-1]
-                
-                # Calculate Delta (absolute difference)
-                delta_col = f"Delta ({curr_period} - {prev_period})"
-                result_df = result_df.with_columns([
-                    (pl.col(str(curr_period)).fill_null(0) - pl.col(str(prev_period)).fill_null(0)).alias(delta_col)
-                ])
-                
-                # Calculate Delta % (percentage change)
-                delta_pct_col = "Delta %"
-                result_df = result_df.with_columns([
-                    pl.when(pl.col(str(prev_period)) != 0)
-                    .then(
-                        ((pl.col(str(curr_period)).fill_null(0) - pl.col(str(prev_period)).fill_null(0)) 
-                         / pl.col(str(prev_period)).abs() * 100).round(2)
-                    )
-                    .otherwise(0)
-                    .alias(delta_pct_col)
-                ])
 
     # Clean up: Remove __row_index__ if it exists (used for pivoting without group_by)
     if "__row_index__" in result_df.columns:
