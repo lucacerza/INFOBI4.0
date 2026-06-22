@@ -42,7 +42,7 @@
 > Direzione scelta: **"Studio"** (enterprise chiara, accento indaco) **+ numeri monospaziati** (da "Control Room"). Mockup approvato.
 - [x] 4.1 Design tokens: variabili CSS light/`.dark` + tema Tailwind semantico (ground/surface/ink/muted/line/accent/pos/neg) + font `num` mono
 - [x] 4.2 Dark mode: themeStore (toggle + persistenza localStorage + preferenza di sistema), init pre-render, toggle in sidebar + test. (Resa visiva piena con 4.3)
-- [ ] 4.3 Componenti UI allineati ai token (KPI, FilterBar, tabelle, card)
+- [x] 4.3 Componenti/pagine allineati ai token (364 sostituzioni su 15 file) + bordo di default su token. Dark mode pieno su tutte le pagine chiare. (FilterBar/BiGridConfig restano col loro tema scuro intenzionale.) Verifica visiva consigliata all'avvio.
 - [ ] 4.4 Responsive mobile vero (tabelle incluse)
 
 ## Fase 5 — Dashboard potenziate

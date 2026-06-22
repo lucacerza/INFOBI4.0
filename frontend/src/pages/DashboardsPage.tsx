@@ -53,7 +53,7 @@ export default function DashboardsPage() {
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
       </div>
     );
   }
@@ -63,13 +63,13 @@ export default function DashboardsPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-gray-500">{dashboards.length} dashboard</p>
+          <p className="text-muted">{dashboards.length} dashboard</p>
         </div>
         
         {isAdmin && (
           <button
             onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg"
+            className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent text-white rounded-lg"
           >
             <Plus className="w-5 h-5" />
             Nuova Dashboard
@@ -78,7 +78,7 @@ export default function DashboardsPage() {
       </div>
       
       {showForm && (
-        <div className="bg-white rounded-xl p-6 border mb-6">
+        <div className="bg-surface rounded-xl p-6 border mb-6">
           <form onSubmit={handleCreate} className="flex gap-4">
             <input
               type="text"
@@ -92,13 +92,13 @@ export default function DashboardsPage() {
             <button
               type="button"
               onClick={() => setShowForm(false)}
-              className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+              className="px-4 py-2 text-muted hover:bg-ground rounded-lg"
             >
               Annulla
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg"
+              className="px-4 py-2 bg-accent hover:bg-accent text-white rounded-lg"
             >
               Crea
             </button>
@@ -108,17 +108,17 @@ export default function DashboardsPage() {
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {dashboards.map(d => (
-          <div key={d.id} className="bg-white rounded-xl border p-5 group">
+          <div key={d.id} className="bg-surface rounded-xl border p-5 group">
             <Link to={`/dashboards/${d.id}`} className="block">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center">
                   <LayoutDashboard className="w-5 h-5" />
                 </div>
-                <h3 className="font-semibold group-hover:text-blue-600 transition">
+                <h3 className="font-semibold group-hover:text-accent transition">
                   {d.name}
                 </h3>
               </div>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-muted">
                 {d.widgets?.length || 0} widget
               </p>
             </Link>
@@ -129,7 +129,7 @@ export default function DashboardsPage() {
                   e.preventDefault();
                   handleDelete(d.id);
                 }}
-                className="mt-3 text-sm text-red-500 hover:text-red-600 flex items-center gap-1"
+                className="mt-3 text-sm text-neg hover:text-neg flex items-center gap-1"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 Elimina
@@ -139,7 +139,7 @@ export default function DashboardsPage() {
         ))}
         
         {dashboards.length === 0 && (
-          <div className="col-span-full text-center py-12 text-gray-500">
+          <div className="col-span-full text-center py-12 text-muted">
             <LayoutDashboard className="w-12 h-12 mx-auto mb-4 text-gray-300" />
             <p>Nessuna dashboard</p>
           </div>

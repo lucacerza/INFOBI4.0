@@ -406,7 +406,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
                                    onLoadMore(row);
                                }}
                                disabled={isLoading}
-                               className="text-blue-600 hover:text-blue-800 hover:underline font-semibold flex items-center gap-2"
+                               className="text-accent hover:text-blue-800 hover:underline font-semibold flex items-center gap-2"
                             >
                                 {isLoading ? <Loader2 size={14} className="animate-spin"/> : null}
                                 Load more...
@@ -431,7 +431,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
                                 className="p-0.5 hover:bg-gray-200 rounded"
                             >
                                 {isLoading ? (
-                                    <Loader2 size={12} className="animate-spin text-blue-500"/>
+                                    <Loader2 size={12} className="animate-spin text-accent"/>
                                 ) : row.getIsExpanded() ? (
                                     <ChevronDown size={12} />
                                 ) : (
@@ -440,7 +440,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
                             </button>
                         ) : <span className="w-3 h-3 mr-0.5" />}
                         
-                        <span className="font-mono text-gray-800" title={getValue() as string}>
+                        <span className="font-mono text-ink" title={getValue() as string}>
                             {getValue() as string}
                         </span>
                     </div>
@@ -716,7 +716,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
   // --- EMPTY STATE ---
   if (rowGroups.length === 0 && valueCols.length === 0 && pivotCols.length === 0) {
       return (
-          <div className="flex h-full items-center justify-center text-xs text-gray-400 bg-gray-50 border border-dashed m-1 rounded font-mono">
+          <div className="flex h-full items-center justify-center text-xs text-muted bg-ground border border-dashed m-1 rounded font-mono">
               Configure rows and values...
           </div>
       );
@@ -727,7 +727,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
   const TOTAL_HEADER_HEIGHT = headerGroups.length * HEADER_ROW_HEIGHT;
 
   return (
-    <div className="h-full w-full bg-white relative font-mono text-xs overflow-hidden flex flex-col">
+    <div className="h-full w-full bg-surface relative font-mono text-xs overflow-hidden flex flex-col">
          {/* Single Scroll Container with Sticky Header support */}
          <div 
             ref={parentRef} 
@@ -744,14 +744,14 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
              >
                  {/* STICKY HEADER */}
                  <div 
-                    className="sticky top-0 z-30 bg-gray-50 shadow-sm flex flex-col text-gray-700 font-bold select-none"
+                    className="sticky top-0 z-30 bg-ground shadow-sm flex flex-col text-gray-700 font-bold select-none"
                     style={{ height: `${TOTAL_HEADER_HEIGHT}px`, width: '100%', minWidth: 'fit-content' }}
                  >
                         {headerGroups.map((headerGroup, groupIndex) => (
                             <div key={headerGroup.id} className="flex" style={{ height: HEADER_ROW_HEIGHT }}>
                                 {headerGroup.headers.map((header) => {
                                      // Uniform styling for all headers as requested
-                                     const borderClass = "border-r border-b border-gray-300 bg-gray-50";
+                                     const borderClass = "border-r border-b border-gray-300 bg-ground";
                                      
                                      // Sticky group column logic
                                      const isGroupCol = header.column.id === 'group';
@@ -761,8 +761,8 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
 
                                      // User Request: Remove horizontal separator (border-b) but keep vertical (border-r) for Group Column
                                      const cellBorderClass = isGroupCol 
-                                        ? "border-r border-gray-300 bg-gray-50" // kept vertical, removed horizontal (border-b)
-                                        : "border-r border-b border-gray-300 bg-gray-50";
+                                        ? "border-r border-gray-300 bg-ground" // kept vertical, removed horizontal (border-b)
+                                        : "border-r border-b border-gray-300 bg-ground";
 
                                      return (
                                     <div 
@@ -779,7 +779,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
                                             onMouseDown={header.getResizeHandler()}
                                             onTouchStart={header.getResizeHandler()}
                                             className={`absolute right-0 top-0 h-full w-1 cursor-col-resize touch-none hover:bg-blue-400 opacity-0 group-hover:opacity-100 ${
-                                                header.column.getIsResizing() ? 'bg-blue-500 opacity-100' : ''
+                                                header.column.getIsResizing() ? 'bg-accent opacity-100' : ''
                                             }`}
                                         />
                                     </div>
@@ -792,7 +792,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
                  {/* LOADING OVERLAY */}
                  {isLoading && (
                      <div className="absolute inset-0 flex items-center justify-center bg-white/60 z-20 h-40 mt-8">
-                         <Loader2 className="animate-spin text-blue-500" size={24} />
+                         <Loader2 className="animate-spin text-accent" size={24} />
                      </div>
                  )}
 
@@ -802,7 +802,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
                     return (
                         <div
                             key={row.id}
-                            className={`flex border-b border-gray-100 absolute left-0 ${row.getIsExpanded() ? 'bg-gray-50' : 'bg-white'} hover:bg-blue-50 w-full font-medium`}
+                            className={`flex border-b border-line absolute left-0 ${row.getIsExpanded() ? 'bg-ground' : 'bg-surface'} hover:bg-accent-soft w-full font-medium`}
                             style={{
                                 height: `${virtualRow.size}px`,
                                 transform: `translateY(${virtualRow.start + TOTAL_HEADER_HEIGHT}px)`, 
@@ -823,7 +823,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
                                 <div 
                                     key={cell.id}
                                     data-cell-column={cell.column.id}
-                                    className={`px-2 border-r border-gray-200 flex items-center text-gray-700 ${isNumber ? 'justify-end' : 'justify-start'}`}
+                                    className={`px-2 border-r border-line flex items-center text-gray-700 ${isNumber ? 'justify-end' : 'justify-start'}`}
                                     style={{ width: cell.column.getSize(), overflow: 'hidden', whiteSpace: 'nowrap', ...stickyStyle }}
                                 >
                                     <div className="truncate w-full">
@@ -840,7 +840,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
 
          
          {/* Footer Status */}
-         <div className="border-t bg-gray-50 p-1 px-2 text-[10px] text-gray-500 flex justify-between shrink-0">
+         <div className="border-t bg-ground p-1 px-2 text-[10px] text-muted flex justify-between shrink-0">
             <span>{rows.length} rows loaded {isFetchingMore && '...'}</span>
             <span>{valueCols.map(c => c.field).join(', ')}</span>
          </div>

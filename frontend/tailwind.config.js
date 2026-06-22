@@ -26,6 +26,10 @@ export default {
       fontFamily: {
         num: ['var(--font-num)'],
       },
+      borderColor: {
+        // Bordo di default sui token -> ogni `border` segue il tema
+        DEFAULT: 'var(--c-border)',
+      },
       borderRadius: {
         card: '0.6875rem', // 11px
         panel: '1rem',     // 16px

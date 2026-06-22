@@ -32,20 +32,20 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-3 mb-2">
-            <div className="w-12 h-12 rounded-xl bg-blue-500 flex items-center justify-center text-white text-2xl font-bold">
+            <div className="w-12 h-12 rounded-xl bg-accent flex items-center justify-center text-white text-2xl font-bold">
               I
             </div>
             <span className="text-3xl font-bold text-white">INFOBI</span>
           </div>
-          <p className="text-slate-400">Business Intelligence 4.0</p>
+          <p className="text-muted">Business Intelligence 4.0</p>
         </div>
         
         {/* Login card */}
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
-          <h2 className="text-2xl font-semibold text-gray-800 mb-6">Accedi</h2>
+        <div className="bg-surface rounded-2xl shadow-2xl p-8">
+          <h2 className="text-2xl font-semibold text-ink mb-6">Accedi</h2>
           
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-neg text-sm">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
               {error}
             </div>
@@ -60,7 +60,7 @@ export default function LoginPage() {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                className="w-full px-4 py-3 border border-line rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent transition"
                 placeholder="Inserisci username"
                 required
                 autoFocus
@@ -75,7 +75,7 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                className="w-full px-4 py-3 border border-line rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent transition"
                 placeholder="Inserisci password"
                 required
               />
@@ -84,7 +84,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white font-medium rounded-lg transition flex items-center justify-center gap-2"
+              className="w-full py-3 bg-accent hover:bg-accent disabled:bg-blue-300 text-white font-medium rounded-lg transition flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
@@ -97,7 +97,7 @@ export default function LoginPage() {
             </button>
           </form>
           
-          <p className="mt-6 text-center text-sm text-gray-500">
+          <p className="mt-6 text-center text-sm text-muted">
             Default: admin / admin
           </p>
         </div>

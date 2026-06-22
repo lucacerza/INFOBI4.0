@@ -17,12 +17,12 @@ const icons = {
 const colors = {
   success: {
     bg: 'bg-green-50 border-green-200',
-    icon: 'text-green-500',
+    icon: 'text-pos',
     text: 'text-green-800',
   },
   error: {
     bg: 'bg-red-50 border-red-200',
-    icon: 'text-red-500',
+    icon: 'text-neg',
     text: 'text-red-800',
   },
   warning: {
@@ -31,8 +31,8 @@ const colors = {
     text: 'text-yellow-800',
   },
   info: {
-    bg: 'bg-blue-50 border-blue-200',
-    icon: 'text-blue-500',
+    bg: 'bg-accent-soft border-accent',
+    icon: 'text-accent',
     text: 'text-blue-800',
   },
 };

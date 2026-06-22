@@ -253,8 +253,8 @@ export default function UsersPage() {
 
   const roleColors: Record<string, string> = {
     superuser: 'bg-purple-100 text-purple-700 border-purple-200',
-    admin: 'bg-red-100 text-red-700 border-red-200',
-    user: 'bg-gray-100 text-gray-700 border-gray-200'
+    admin: 'bg-red-100 text-neg border-red-200',
+    user: 'bg-ground text-gray-700 border-line'
   };
 
   const roleLabels: Record<string, string> = {
@@ -272,29 +272,29 @@ export default function UsersPage() {
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col bg-slate-50">
+    <div className="h-full flex flex-col bg-surface-2">
       {/* Header */}
-      <div className="bg-white border-b px-6 py-4">
+      <div className="bg-surface border-b px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
-              <Users className="w-5 h-5 text-blue-600" />
+            <div className="w-10 h-10 bg-accent-soft rounded-xl flex items-center justify-center">
+              <Users className="w-5 h-5 text-accent" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-800">Gestione Utenti</h1>
-              <p className="text-sm text-slate-500">{users.length} utenti registrati</p>
+              <h1 className="text-xl font-bold text-ink">Gestione Utenti</h1>
+              <p className="text-sm text-muted">{users.length} utenti registrati</p>
             </div>
           </div>
           
           <button
             onClick={openCreateModal}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition shadow-sm"
+            className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent-strong text-white rounded-lg transition shadow-sm"
           >
             <UserPlus className="w-4 h-4" />
             Nuovo Utente
@@ -303,13 +303,13 @@ export default function UsersPage() {
         
         {/* Search */}
         <div className="mt-4 relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cerca utenti..."
-            className="w-full pl-10 pr-4 py-2 border rounded-lg bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 transition"
+            className="w-full pl-10 pr-4 py-2 border rounded-lg bg-surface-2 focus:bg-surface focus:ring-2 focus:ring-accent transition"
           />
         </div>
       </div>
@@ -320,7 +320,7 @@ export default function UsersPage() {
           {filteredUsers.map(user => (
             <div 
               key={user.id}
-              className="bg-white rounded-xl border p-4 hover:shadow-md transition"
+              className="bg-surface rounded-xl border p-4 hover:shadow-md transition"
             >
               <div className="flex items-center gap-4">
                 {/* Avatar */}
@@ -331,18 +331,18 @@ export default function UsersPage() {
                 {/* Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-slate-800">{user.username}</h3>
+                    <h3 className="font-semibold text-ink">{user.username}</h3>
                     {!user.is_active && (
-                      <span className="px-2 py-0.5 text-xs bg-red-100 text-red-600 rounded">
+                      <span className="px-2 py-0.5 text-xs bg-red-100 text-neg rounded">
                         Disattivato
                       </span>
                     )}
                   </div>
                   {user.full_name && (
-                    <p className="text-sm text-slate-600">{user.full_name}</p>
+                    <p className="text-sm text-muted">{user.full_name}</p>
                   )}
                   {user.email && (
-                    <p className="text-sm text-slate-400">{user.email}</p>
+                    <p className="text-sm text-muted">{user.email}</p>
                   )}
                 </div>
                 
@@ -366,20 +366,20 @@ export default function UsersPage() {
                   {user.role === 'user' && (
                     <button
                       onClick={() => openAssignModal(user)}
-                      className="p-2 hover:bg-slate-100 rounded-lg transition"
+                      className="p-2 hover:bg-ground rounded-lg transition"
                       title="Assegna Report/Dashboard"
                     >
-                      <FileText className="w-4 h-4 text-slate-500" />
+                      <FileText className="w-4 h-4 text-muted" />
                     </button>
                   )}
                   {/* Modifica */}
                   {canEditUser(user) && (
                     <button
                       onClick={() => openEditModal(user)}
-                      className="p-2 hover:bg-slate-100 rounded-lg transition"
+                      className="p-2 hover:bg-ground rounded-lg transition"
                       title="Modifica"
                     >
-                      <Edit className="w-4 h-4 text-slate-500" />
+                      <Edit className="w-4 h-4 text-muted" />
                     </button>
                   )}
                   {/* Elimina - nascosto per account sistema e per se stessi */}
@@ -389,7 +389,7 @@ export default function UsersPage() {
                       className="p-2 hover:bg-red-50 rounded-lg transition"
                       title="Elimina"
                     >
-                      <Trash2 className="w-4 h-4 text-red-500" />
+                      <Trash2 className="w-4 h-4 text-neg" />
                     </button>
                   )}
                 </div>
@@ -398,7 +398,7 @@ export default function UsersPage() {
           ))}
           
           {filteredUsers.length === 0 && (
-            <div className="text-center py-12 text-slate-400">
+            <div className="text-center py-12 text-muted">
               <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
               <p>Nessun utente trovato</p>
             </div>
@@ -409,7 +409,7 @@ export default function UsersPage() {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-auto">
+          <div className="bg-surface rounded-2xl w-full max-w-lg max-h-[90vh] overflow-auto">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-6 border-b">
               <h2 className="text-lg font-semibold">
@@ -419,7 +419,7 @@ export default function UsersPage() {
               </h2>
               <button 
                 onClick={() => setShowModal(false)}
-                className="p-2 hover:bg-slate-100 rounded-lg"
+                className="p-2 hover:bg-ground rounded-lg"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -436,7 +436,7 @@ export default function UsersPage() {
                       value={form.username}
                       onChange={(e) => setForm({ ...form, username: e.target.value })}
                       disabled={modalMode === 'edit'}
-                      className="w-full px-3 py-2 border rounded-lg disabled:bg-slate-100"
+                      className="w-full px-3 py-2 border rounded-lg disabled:bg-ground"
                     />
                   </div>
                   
@@ -488,7 +488,7 @@ export default function UsersPage() {
                           onChange={(e) => setForm({ ...form, role: e.target.value as any })}
                           disabled={isRoleDisabled}
                           aria-label="Ruolo utente"
-                          className="w-full px-3 py-2 border rounded-lg disabled:bg-slate-100 disabled:cursor-not-allowed"
+                          className="w-full px-3 py-2 border rounded-lg disabled:bg-ground disabled:cursor-not-allowed"
                         >
                           <option value="user">Utente (visualizza dashboard assegnate)</option>
                           {showAllOptions && (
@@ -504,7 +504,7 @@ export default function UsersPage() {
                       <p className="text-xs text-amber-600 mt-1">Il ruolo dell'account di sistema non può essere modificato</p>
                     )}
                     {modalMode === 'edit' && !selectedUser?.is_system_account && selectedUser?.id === currentUser?.id && (
-                      <p className="text-xs text-slate-500 mt-1">Non puoi modificare il tuo ruolo</p>
+                      <p className="text-xs text-muted mt-1">Non puoi modificare il tuo ruolo</p>
                     )}
                   </div>
 
@@ -534,7 +534,7 @@ export default function UsersPage() {
                   {/* Reports */}
                   <div>
                     <h3 className="font-medium flex items-center gap-2 mb-3">
-                      <FileText className="w-4 h-4 text-blue-500" />
+                      <FileText className="w-4 h-4 text-accent" />
                       Report Assegnati
                     </h3>
                     <div className="space-y-2 max-h-48 overflow-auto">
@@ -543,8 +543,8 @@ export default function UsersPage() {
                           key={report.id}
                           className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition ${
                             assignedReports.includes(report.id)
-                              ? 'bg-blue-50 border border-blue-200'
-                              : 'bg-slate-50 hover:bg-slate-100'
+                              ? 'bg-accent-soft border border-accent'
+                              : 'bg-surface-2 hover:bg-ground'
                           }`}
                         >
                           <input
@@ -563,7 +563,7 @@ export default function UsersPage() {
                         </label>
                       ))}
                       {reports.length === 0 && (
-                        <p className="text-slate-400 text-sm">Nessun report disponibile</p>
+                        <p className="text-muted text-sm">Nessun report disponibile</p>
                       )}
                     </div>
                   </div>
@@ -581,7 +581,7 @@ export default function UsersPage() {
                           className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition ${
                             assignedDashboards.includes(dashboard.id)
                               ? 'bg-purple-50 border border-purple-200'
-                              : 'bg-slate-50 hover:bg-slate-100'
+                              : 'bg-surface-2 hover:bg-ground'
                           }`}
                         >
                           <input
@@ -600,7 +600,7 @@ export default function UsersPage() {
                         </label>
                       ))}
                       {dashboards.length === 0 && (
-                        <p className="text-slate-400 text-sm">Nessuna dashboard disponibile</p>
+                        <p className="text-muted text-sm">Nessuna dashboard disponibile</p>
                       )}
                     </div>
                   </div>
@@ -609,17 +609,17 @@ export default function UsersPage() {
             </div>
             
             {/* Modal Footer */}
-            <div className="flex justify-end gap-3 p-6 border-t bg-slate-50">
+            <div className="flex justify-end gap-3 p-6 border-t bg-surface-2">
               <button
                 onClick={() => setShowModal(false)}
-                className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg transition"
+                className="px-4 py-2 text-muted hover:bg-slate-200 rounded-lg transition"
               >
                 Annulla
               </button>
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition disabled:opacity-50"
+                className="flex items-center gap-2 px-6 py-2 bg-accent hover:bg-accent-strong text-white rounded-lg transition disabled:opacity-50"
               >
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                 Salva

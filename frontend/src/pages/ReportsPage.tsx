@@ -72,7 +72,7 @@ export default function ReportsPage() {
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
       </div>
     );
   }
@@ -82,14 +82,14 @@ export default function ReportsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Report</h1>
-          <p className="text-gray-500">{reports.length} report disponibili</p>
+          <h1 className="text-2xl font-bold text-ink">Report</h1>
+          <p className="text-muted">{reports.length} report disponibili</p>
         </div>
         
         {isSuperuser && (
           <Link
             to="/reports/new"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent text-white rounded-lg transition"
           >
             <Plus className="w-5 h-5" />
             Nuovo Report
@@ -99,13 +99,13 @@ export default function ReportsPage() {
       
       {/* Search */}
       <div className="relative mb-6">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted" />
         <input
           type="text"
           placeholder="Cerca report..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full pl-10 pr-4 py-3 border border-line rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent"
         />
       </div>
       
@@ -113,42 +113,42 @@ export default function ReportsPage() {
       {filteredReports.length === 0 ? (
         <div className="text-center py-12">
           <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-500">Nessun report trovato</p>
+          <p className="text-muted">Nessun report trovato</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredReports.map(report => (
             <div
               key={report.id}
-              className="relative p-5 bg-white border border-gray-100 rounded-xl hover:shadow-lg hover:border-blue-200 transition group"
+              className="relative p-5 bg-surface border border-line rounded-xl hover:shadow-lg hover:border-accent transition group"
             >
               <Link
                 to={`/reports/${report.id}/pivot`}
                 className="block"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-500 group-hover:text-white transition">
+                  <div className="w-10 h-10 rounded-lg bg-accent-soft text-accent flex items-center justify-center flex-shrink-0 group-hover:bg-accent group-hover:text-white transition">
                     <FileText className="w-5 h-5" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-800 truncate group-hover:text-blue-600 transition">
+                    <h3 className="font-semibold text-ink truncate group-hover:text-accent transition">
                       {report.name}
                     </h3>
                     {report.description && (
-                      <p className="text-sm text-gray-500 mt-1 line-clamp-2">
+                      <p className="text-sm text-muted mt-1 line-clamp-2">
                         {report.description}
                       </p>
                     )}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4 mt-4 pt-4 border-t border-gray-100 text-xs text-gray-400">
+                <div className="flex items-center gap-4 mt-4 pt-4 border-t border-line text-xs text-muted">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5" />
                     {new Date(report.updated_at).toLocaleDateString('it-IT')}
                   </span>
                   {report.cache_enabled && (
-                    <span className="flex items-center gap-1 text-green-500">
+                    <span className="flex items-center gap-1 text-pos">
                       <Database className="w-3.5 h-3.5" />
                       Cache
                     </span>
@@ -165,14 +165,14 @@ export default function ReportsPage() {
                       e.stopPropagation();
                       handleDelete(report.id, report.name);
                     }}
-                    className="p-2 bg-slate-100 hover:bg-red-600 hover:text-white rounded-lg transition"
+                    className="p-2 bg-ground hover:bg-red-600 hover:text-white rounded-lg transition"
                     title="Elimina report"
                   >
                     <Trash className="w-4 h-4" />
                   </button>
                   <Link
                     to={`/reports/${report.id}/edit`}
-                    className="p-2 bg-slate-100 hover:bg-purple-600 hover:text-white rounded-lg transition"
+                    className="p-2 bg-ground hover:bg-purple-600 hover:text-white rounded-lg transition"
                     onClick={(e) => e.stopPropagation()}
                     title="Modifica report"
                   >

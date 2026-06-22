@@ -136,29 +136,29 @@ export default function ReportPivotPage() {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center bg-slate-50">
+      <div className="h-full flex items-center justify-center bg-surface-2">
         <div className="text-center">
-          <Loader2 className="w-10 h-10 animate-spin text-blue-500 mx-auto mb-3" />
-          <p className="text-slate-500">Caricamento...</p>
+          <Loader2 className="w-10 h-10 animate-spin text-accent mx-auto mb-3" />
+          <p className="text-muted">Caricamento...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col bg-slate-50">
+    <div className="h-full flex flex-col bg-surface-2">
       {/* Header */}
-      <div className="bg-white border-b px-4 py-3 flex items-center justify-between flex-shrink-0">
+      <div className="bg-surface border-b px-4 py-3 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
-          <Link to="/reports" className="p-2 hover:bg-slate-100 rounded-lg">
-            <ArrowLeft className="w-5 h-5 text-slate-600" />
+          <Link to="/reports" className="p-2 hover:bg-ground rounded-lg">
+            <ArrowLeft className="w-5 h-5 text-muted" />
           </Link>
           <div>
-            <h1 className="font-semibold text-slate-800 flex items-center gap-2">
-              <LayoutGrid className="w-5 h-5 text-blue-500" />
+            <h1 className="font-semibold text-ink flex items-center gap-2">
+              <LayoutGrid className="w-5 h-5 text-accent" />
               {report?.name || 'Pivot Table'}
             </h1>
-            <p className="text-xs text-slate-500">Gerarchia multi-livello con BiGrid</p>
+            <p className="text-xs text-muted">Gerarchia multi-livello con BiGrid</p>
           </div>
         </div>
 
@@ -168,8 +168,8 @@ export default function ReportPivotPage() {
             onClick={() => setShowBuilder(!showBuilder)}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${
               showBuilder
-                ? 'bg-blue-100 text-blue-700'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-accent-soft text-accent-strong'
+                : 'bg-ground text-muted hover:bg-slate-200'
             }`}
           >
             <Settings className="w-4 h-4" />
@@ -217,7 +217,7 @@ export default function ReportPivotPage() {
       </div>
 
       {/* Status Bar */}
-      <div className="bg-white border-t px-4 py-2 flex items-center justify-between text-xs text-slate-600 flex-shrink-0">
+      <div className="bg-surface border-t px-4 py-2 flex items-center justify-between text-xs text-muted flex-shrink-0">
         <div className="flex items-center gap-4">
           <span>
             <strong>Righe:</strong> {pivotConfig.rows.length > 0 ? pivotConfig.rows.join(' → ') : 'Nessuna'}
@@ -230,7 +230,7 @@ export default function ReportPivotPage() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="px-2 py-1 bg-green-100 text-green-700 rounded font-medium">
+          <span className="px-2 py-1 bg-green-100 text-pos rounded font-medium">
             Multi-Level ✓
           </span>
         </div>

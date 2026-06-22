@@ -76,10 +76,10 @@ export default function ReportViewerPage() {
   // Loading state
   if (loading && !report) {
     return (
-      <div className="h-full flex items-center justify-center bg-slate-50">
+      <div className="h-full flex items-center justify-center bg-surface-2">
         <div className="text-center">
-          <Loader2 className="w-10 h-10 animate-spin text-blue-500 mx-auto mb-3" />
-          <p className="text-slate-500">Caricamento...</p>
+          <Loader2 className="w-10 h-10 animate-spin text-accent mx-auto mb-3" />
+          <p className="text-muted">Caricamento...</p>
         </div>
       </div>
     );
@@ -88,11 +88,11 @@ export default function ReportViewerPage() {
   // Error state
   if (error && !report) {
     return (
-      <div className="h-full flex items-center justify-center bg-slate-50">
+      <div className="h-full flex items-center justify-center bg-surface-2">
         <div className="text-center">
           <Database className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-          <p className="text-red-500 mb-2">{error}</p>
-          <Link to="/reports" className="text-blue-500 hover:underline">
+          <p className="text-neg mb-2">{error}</p>
+          <Link to="/reports" className="text-accent hover:underline">
             Torna ai report
           </Link>
         </div>
@@ -101,31 +101,31 @@ export default function ReportViewerPage() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-slate-50">
+    <div className="h-full flex flex-col bg-surface-2">
       {/* Header */}
-      <div className="bg-white border-b px-4 py-3 flex items-center justify-between flex-shrink-0 z-10">
+      <div className="bg-surface border-b px-4 py-3 flex items-center justify-between flex-shrink-0 z-10">
         <div className="flex items-center gap-3">
-          <Link to="/reports" className="p-2 hover:bg-slate-100 rounded-lg">
-            <ArrowLeft className="w-5 h-5 text-slate-600" />
+          <Link to="/reports" className="p-2 hover:bg-ground rounded-lg">
+            <ArrowLeft className="w-5 h-5 text-muted" />
           </Link>
           <div>
-            <h1 className="font-semibold text-slate-800">{report?.name || 'Report'}</h1>
-            {report?.description && <p className="text-xs text-slate-500">{report.description}</p>}
+            <h1 className="font-semibold text-ink">{report?.name || 'Report'}</h1>
+            {report?.description && <p className="text-xs text-muted">{report.description}</p>}
           </div>
         </div>
         
         <div className="flex items-center gap-2">
           {/* Stats */}
-          <div className="hidden md:flex items-center gap-3 px-3 py-1.5 bg-slate-100 rounded-lg text-xs">
+          <div className="hidden md:flex items-center gap-3 px-3 py-1.5 bg-ground rounded-lg text-xs">
             {stats.cached && (
-              <span className="flex items-center gap-1 text-green-600 font-medium">
+              <span className="flex items-center gap-1 text-pos font-medium">
                 <Zap className="w-3 h-3" />Cache
               </span>
             )}
-            <span className="flex items-center gap-1 text-slate-600">
+            <span className="flex items-center gap-1 text-muted">
               <Database className="w-3 h-3" />{stats.rows.toLocaleString()}
             </span>
-            <span className="flex items-center gap-1 text-slate-600">
+            <span className="flex items-center gap-1 text-muted">
               <Clock className="w-3 h-3" />{stats.time.toFixed(0)}ms
             </span>
           </div>
@@ -144,23 +144,23 @@ export default function ReportViewerPage() {
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="p-2 hover:bg-slate-100 rounded-lg"
+            className="p-2 hover:bg-ground rounded-lg"
             title="Aggiorna dati"
           >
-            <RefreshCw className={`w-4 h-4 text-slate-600 ${refreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 text-muted ${refreshing ? 'animate-spin' : ''}`} />
           </button>
           
           {/* Export */}
           <div className="relative group">
-            <button className="p-2 hover:bg-slate-100 rounded-lg" title="Esporta">
-              <Download className="w-4 h-4 text-slate-600" />
+            <button className="p-2 hover:bg-ground rounded-lg" title="Esporta">
+              <Download className="w-4 h-4 text-muted" />
             </button>
-            <div className="absolute right-0 top-full mt-1 w-32 bg-white rounded-lg shadow-xl border opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-20">
-              <a href={`/api/export/${reportId}/xlsx`} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 rounded-t-lg">
-                <FileSpreadsheet className="w-4 h-4 text-green-600" />Excel
+            <div className="absolute right-0 top-full mt-1 w-32 bg-surface rounded-lg shadow-xl border opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-20">
+              <a href={`/api/export/${reportId}/xlsx`} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-surface-2 rounded-t-lg">
+                <FileSpreadsheet className="w-4 h-4 text-pos" />Excel
               </a>
-              <a href={`/api/export/${reportId}/csv`} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-slate-50 rounded-b-lg">
-                <FileText className="w-4 h-4 text-blue-600" />CSV
+              <a href={`/api/export/${reportId}/csv`} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-surface-2 rounded-b-lg">
+                <FileText className="w-4 h-4 text-accent" />CSV
               </a>
             </div>
           </div>
@@ -185,15 +185,15 @@ export default function ReportViewerPage() {
       
       {/* Main Content: Report Info Card */}
       <div className="flex-1 flex items-center justify-center p-8">
-        <div className="max-w-2xl w-full bg-white rounded-xl shadow-lg p-8 text-center">
+        <div className="max-w-2xl w-full bg-surface rounded-xl shadow-lg p-8 text-center">
           <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
             <LayoutGrid className="w-10 h-10 text-white" />
           </div>
           
-          <h2 className="text-2xl font-bold text-slate-800 mb-3">{report?.name}</h2>
+          <h2 className="text-2xl font-bold text-ink mb-3">{report?.name}</h2>
           
           {report?.description && (
-            <p className="text-slate-600 mb-8">{report.description}</p>
+            <p className="text-muted mb-8">{report.description}</p>
           )}
           
           <div className="flex flex-col gap-3 mb-8">
@@ -208,7 +208,7 @@ export default function ReportViewerPage() {
             <div className="grid grid-cols-2 gap-3">
               <a
                 href={`/api/export/${reportId}/xlsx`}
-                className="flex items-center justify-center gap-2 px-4 py-3 bg-green-50 hover:bg-green-100 text-green-700 rounded-lg text-sm font-medium transition border border-green-200"
+                className="flex items-center justify-center gap-2 px-4 py-3 bg-green-50 hover:bg-green-100 text-pos rounded-lg text-sm font-medium transition border border-green-200"
               >
                 <FileSpreadsheet className="w-4 h-4" />
                 Export Excel
@@ -216,7 +216,7 @@ export default function ReportViewerPage() {
               
               <a
                 href={`/api/export/${reportId}/csv`}
-                className="flex items-center justify-center gap-2 px-4 py-3 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-sm font-medium transition border border-blue-200"
+                className="flex items-center justify-center gap-2 px-4 py-3 bg-accent-soft hover:bg-accent-soft text-accent-strong rounded-lg text-sm font-medium transition border border-accent"
               >
                 <FileText className="w-4 h-4" />
                 Export CSV
@@ -228,7 +228,7 @@ export default function ReportViewerPage() {
             <button
               onClick={handleRefresh}
               disabled={refreshing}
-              className="flex items-center gap-2 px-4 py-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition text-sm"
+              className="flex items-center gap-2 px-4 py-2 text-muted hover:text-ink hover:bg-ground rounded-lg transition text-sm"
             >
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
               Aggiorna Cache
@@ -237,7 +237,7 @@ export default function ReportViewerPage() {
             {isAdmin && (
               <Link
                 to={`/reports/${reportId}/edit`}
-                className="flex items-center gap-2 px-4 py-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition text-sm"
+                className="flex items-center gap-2 px-4 py-2 text-muted hover:text-ink hover:bg-ground rounded-lg transition text-sm"
               >
                 <Edit className="w-4 h-4" />
                 Modifica Report

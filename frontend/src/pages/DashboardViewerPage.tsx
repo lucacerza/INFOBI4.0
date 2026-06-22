@@ -275,7 +275,7 @@ export default function DashboardViewerPage() {
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
       </div>
     );
   }
@@ -283,7 +283,7 @@ export default function DashboardViewerPage() {
   if (!dashboard) {
     return (
       <div className="h-full flex items-center justify-center">
-        <p className="text-slate-500">Dashboard non trovata</p>
+        <p className="text-muted">Dashboard non trovata</p>
       </div>
     );
   }
@@ -322,21 +322,21 @@ export default function DashboardViewerPage() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-slate-100">
+    <div className="h-full flex flex-col bg-ground">
       {/* Header */}
-      <div className="bg-white border-b px-4 py-3 flex items-center justify-between flex-shrink-0">
+      <div className="bg-surface border-b px-4 py-3 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
-          <Link to="/dashboards" className="p-2 hover:bg-slate-100 rounded-lg">
+          <Link to="/dashboards" className="p-2 hover:bg-ground rounded-lg">
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <h1 className="font-semibold text-slate-800">{dashboard.name}</h1>
+          <h1 className="font-semibold text-ink">{dashboard.name}</h1>
         </div>
 
         <div className="flex items-center gap-2">
           {isAdminOrSuperuser && (
             <button
               onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+              className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent-strong text-white rounded-lg"
             >
               <Plus className="w-4 h-4" />
               Aggiungi Widget
@@ -360,13 +360,13 @@ export default function DashboardViewerPage() {
       <div className="flex-1 p-4 overflow-auto">
         {widgets.length === 0 ? (
           <div className="h-full flex items-center justify-center">
-            <div className="text-center text-slate-500">
+            <div className="text-center text-muted">
               <Plus className="w-16 h-16 mx-auto mb-4 text-slate-300" />
               <p className="text-lg mb-2">Dashboard vuota</p>
               {isAdminOrSuperuser && (
                 <button
                   onClick={() => setShowAddModal(true)}
-                  className="text-blue-600 hover:underline"
+                  className="text-accent hover:underline"
                 >
                   Aggiungi il primo widget
                 </button>
@@ -445,8 +445,8 @@ function WidgetCard({
   // Validate widget has required data
   if (!widget.report_id) {
     return (
-      <div className="bg-white rounded-xl border overflow-hidden p-4" style={{ height: '450px' }}>
-        <div className="h-full flex items-center justify-center text-slate-400">
+      <div className="bg-surface rounded-xl border overflow-hidden p-4" style={{ height: '450px' }}>
+        <div className="h-full flex items-center justify-center text-muted">
           <p>Widget non configurato correttamente (report mancante)</p>
         </div>
       </div>
@@ -454,13 +454,13 @@ function WidgetCard({
   }
 
   return (
-    <div className="bg-white rounded-xl border overflow-hidden" style={{ height: '450px' }}>
+    <div className="bg-surface rounded-xl border overflow-hidden" style={{ height: '450px' }}>
       {/* Widget Header */}
-      <div className="px-4 py-2 border-b bg-slate-50 flex items-center justify-between">
+      <div className="px-4 py-2 border-b bg-surface-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          {canEdit && <GripVertical className="w-4 h-4 text-slate-400 cursor-move" />}
+          {canEdit && <GripVertical className="w-4 h-4 text-muted cursor-move" />}
           {widget.widget_type === 'chart' ? (
-            <BarChart3 className="w-4 h-4 text-blue-500" />
+            <BarChart3 className="w-4 h-4 text-accent" />
           ) : widget.widget_type === 'slicer' ? (
             <SlidersHorizontal className="w-4 h-4 text-purple-500" />
           ) : (
@@ -484,7 +484,7 @@ function WidgetCard({
               <button
                 type="button"
                 onClick={() => setShowSettings(true)}
-                className="p-1 hover:bg-slate-100 rounded text-slate-500"
+                className="p-1 hover:bg-ground rounded text-muted"
                 title="Configura Widget"
               >
                 <Settings className="w-4 h-4" />
@@ -493,7 +493,7 @@ function WidgetCard({
               <button
                 type="button"
                 onClick={onToggleType}
-                className="p-1 hover:bg-slate-100 rounded text-slate-500"
+                className="p-1 hover:bg-ground rounded text-muted"
                 title={widget.widget_type === 'chart' ? 'Passa a Tabella' : 'Passa a Grafico'}
               >
                 {widget.widget_type === 'chart' ? (
@@ -505,7 +505,7 @@ function WidgetCard({
               <button
                 type="button"
                 onClick={onRemove}
-                className="p-1 hover:bg-red-100 rounded text-red-500"
+                className="p-1 hover:bg-red-100 rounded text-neg"
                 title="Rimuovi"
               >
                 <Trash2 className="w-4 h-4" />
@@ -668,10 +668,10 @@ function WidgetSettingsModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl w-full max-w-lg max-h-[80vh] flex flex-col">
+      <div className="bg-surface rounded-xl w-full max-w-lg max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="font-semibold">Configura Widget: {widget.title}</h2>
-          <button type="button" onClick={onClose} className="p-1 hover:bg-slate-100 rounded" title="Chiudi">
+          <button type="button" onClick={onClose} className="p-1 hover:bg-ground rounded" title="Chiudi">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -679,7 +679,7 @@ function WidgetSettingsModal({
         <div className="flex-1 overflow-auto p-4 space-y-4">
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+              <Loader2 className="w-6 h-6 animate-spin text-accent" />
             </div>
           ) : (
             <>
@@ -688,7 +688,7 @@ function WidgetSettingsModal({
                 <label className="block text-sm font-medium mb-2">
                   Group By (Raggruppamento)
                 </label>
-                <p className="text-xs text-slate-500 mb-2">
+                <p className="text-xs text-muted mb-2">
                   Seleziona i campi per raggruppare i dati. L'ordine determina la gerarchia del drill-down.
                 </p>
                 <div className="flex flex-wrap gap-2">
@@ -699,8 +699,8 @@ function WidgetSettingsModal({
                       onClick={() => toggleGroupBy(col.name)}
                       className={`px-3 py-1.5 rounded-full text-sm border transition ${
                         (config.groupBy || []).includes(col.name)
-                          ? 'bg-blue-100 border-blue-300 text-blue-700'
-                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
+                          ? 'bg-accent-soft border-accent text-accent-strong'
+                          : 'bg-surface-2 border-line text-muted hover:border-slate-300'
                       }`}
                     >
                       {(config.groupBy || []).includes(col.name) && (
@@ -713,7 +713,7 @@ function WidgetSettingsModal({
                   ))}
                 </div>
                 {(config.groupBy || []).length > 0 && (
-                  <p className="text-xs text-blue-600 mt-2">
+                  <p className="text-xs text-accent mt-2">
                     Ordine drill-down: {(config.groupBy || []).join(' → ')}
                   </p>
                 )}
@@ -724,7 +724,7 @@ function WidgetSettingsModal({
                 <label className="block text-sm font-medium mb-2">
                   Metriche (Valori)
                 </label>
-                <p className="text-xs text-slate-500 mb-2">
+                <p className="text-xs text-muted mb-2">
                   Seleziona i campi numerici da aggregare.
                 </p>
                 <div className="space-y-2">
@@ -739,7 +739,7 @@ function WidgetSettingsModal({
                           className={`flex-1 px-3 py-2 rounded-lg text-sm border text-left transition ${
                             isSelected
                               ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
-                              : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
+                              : 'bg-surface-2 border-line text-muted hover:border-slate-300'
                           }`}
                         >
                           {col.label || col.name}
@@ -769,7 +769,7 @@ function WidgetSettingsModal({
                 <label className="block text-sm font-medium mb-2">
                   Split By (Pivot - opzionale)
                 </label>
-                <p className="text-xs text-slate-500 mb-2">
+                <p className="text-xs text-muted mb-2">
                   Dividi le metriche per questo campo (es. per Anno).
                 </p>
                 <div className="flex flex-wrap gap-2">
@@ -781,7 +781,7 @@ function WidgetSettingsModal({
                       className={`px-3 py-1.5 rounded-full text-sm border transition ${
                         (config.splitBy || []).includes(col.name)
                           ? 'bg-purple-100 border-purple-300 text-purple-700'
-                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-slate-300'
+                          : 'bg-surface-2 border-line text-muted hover:border-slate-300'
                       }`}
                     >
                       {col.label || col.name}
@@ -798,7 +798,7 @@ function WidgetSettingsModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg"
+            className="px-4 py-2 text-muted hover:bg-ground rounded-lg"
           >
             Annulla
           </button>
@@ -806,7 +806,7 @@ function WidgetSettingsModal({
             type="button"
             onClick={() => onSave(config)}
             disabled={loading}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
+            className="px-4 py-2 bg-accent hover:bg-accent-strong text-white rounded-lg disabled:opacity-50"
           >
             Salva
           </button>
@@ -862,10 +862,10 @@ function AddWidgetModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl w-full max-w-md max-h-[80vh] flex flex-col">
+      <div className="bg-surface rounded-xl w-full max-w-md max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="font-semibold">Aggiungi Widget</h2>
-          <button type="button" onClick={onClose} className="p-1 hover:bg-slate-100 rounded" title="Chiudi">
+          <button type="button" onClick={onClose} className="p-1 hover:bg-ground rounded" title="Chiudi">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -880,8 +880,8 @@ function AddWidgetModal({
                 onClick={() => setWidgetType('chart')}
                 className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-lg border transition ${
                   widgetType === 'chart'
-                    ? 'border-blue-500 bg-blue-50 text-blue-700'
-                    : 'border-slate-200 hover:border-slate-300'
+                    ? 'border-accent bg-accent-soft text-accent-strong'
+                    : 'border-line hover:border-slate-300'
                 }`}
               >
                 <BarChart3 className="w-5 h-5" />
@@ -893,7 +893,7 @@ function AddWidgetModal({
                 className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-lg border transition ${
                   widgetType === 'grid'
                     ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                    : 'border-slate-200 hover:border-slate-300'
+                    : 'border-line hover:border-slate-300'
                 }`}
               >
                 <Table className="w-5 h-5" />
@@ -905,7 +905,7 @@ function AddWidgetModal({
                 className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-lg border transition ${
                   widgetType === 'slicer'
                     ? 'border-purple-500 bg-purple-50 text-purple-700'
-                    : 'border-slate-200 hover:border-slate-300'
+                    : 'border-line hover:border-slate-300'
                 }`}
               >
                 <SlidersHorizontal className="w-5 h-5" />
@@ -918,7 +918,7 @@ function AddWidgetModal({
           <div className="mb-4">
             <label className="block text-sm font-medium mb-2">Seleziona Report</label>
             {reports.length === 0 ? (
-              <p className="text-slate-500 text-center py-8">
+              <p className="text-muted text-center py-8">
                 Nessun report disponibile
               </p>
             ) : (
@@ -930,8 +930,8 @@ function AddWidgetModal({
                     onClick={() => setSelectedReport(report.id)}
                     className={`w-full text-left p-3 rounded-lg border transition ${
                       selectedReport === report.id
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'hover:border-blue-300 hover:bg-slate-50'
+                        ? 'border-accent bg-accent-soft'
+                        : 'hover:border-accent hover:bg-surface-2'
                     }`}
                   >
                     <p className="font-medium text-sm">{report.name}</p>
@@ -948,10 +948,10 @@ function AddWidgetModal({
                 <label className="block text-sm font-medium mb-2">Colonna</label>
                 {loadingSchema ? (
                   <div className="flex items-center justify-center py-4">
-                    <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                    <Loader2 className="w-5 h-5 animate-spin text-accent" />
                   </div>
                 ) : !schema || schema.columns?.length === 0 ? (
-                  <p className="text-slate-500 text-sm">Nessuna colonna disponibile</p>
+                  <p className="text-muted text-sm">Nessuna colonna disponibile</p>
                 ) : (
                   <div className="space-y-1 max-h-36 overflow-auto border rounded-lg">
                     {schema.columns.map((col: any) => (
@@ -962,7 +962,7 @@ function AddWidgetModal({
                         className={`w-full text-left px-3 py-1.5 text-sm transition ${
                           selectedColumn === col.name
                             ? 'bg-purple-50 text-purple-700 font-medium'
-                            : 'hover:bg-slate-50 text-slate-700'
+                            : 'hover:bg-surface-2 text-ink'
                         }`}
                       >
                         {col.label || col.name}
@@ -981,7 +981,7 @@ function AddWidgetModal({
                     className={`flex-1 p-2 text-sm rounded-lg border transition ${
                       slicerType === 'list'
                         ? 'border-purple-500 bg-purple-50 text-purple-700'
-                        : 'border-slate-200 hover:border-slate-300'
+                        : 'border-line hover:border-slate-300'
                     }`}
                   >
                     Lista
@@ -992,7 +992,7 @@ function AddWidgetModal({
                     className={`flex-1 p-2 text-sm rounded-lg border transition ${
                       slicerType === 'dropdown'
                         ? 'border-purple-500 bg-purple-50 text-purple-700'
-                        : 'border-slate-200 hover:border-slate-300'
+                        : 'border-line hover:border-slate-300'
                     }`}
                   >
                     Dropdown
@@ -1009,7 +1009,7 @@ function AddWidgetModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg"
+            className="px-4 py-2 text-muted hover:bg-ground rounded-lg"
           >
             Annulla
           </button>
@@ -1017,7 +1017,7 @@ function AddWidgetModal({
             type="button"
             onClick={handleAdd}
             disabled={!canAdd}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 bg-accent hover:bg-accent-strong text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Aggiungi
           </button>
