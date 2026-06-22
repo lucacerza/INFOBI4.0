@@ -191,6 +191,20 @@ class AuditLog(Base):
     detail = Column(Text)
 
 # ============================================
+# REPORT VERSIONING
+# ============================================
+class ReportVersion(Base):
+    """Snapshot storico della definizione di un report (per ripristino/audit)."""
+    __tablename__ = "report_versions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    report_id = Column(Integer, ForeignKey("reports.id", ondelete="CASCADE"), nullable=False)
+    version_no = Column(Integer, nullable=False)
+    snapshot = Column(JSON, default={})   # stato della definizione al momento
+    created_by = Column(Integer)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# ============================================
 # ROW-LEVEL SECURITY
 # ============================================
 class RlsRule(Base):

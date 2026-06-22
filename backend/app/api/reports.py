@@ -6,13 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
 from pydantic import BaseModel
-from app.db.database import get_db, Report, Connection
+from app.db.database import get_db, Report, Connection, ReportVersion
 from app.core.deps import get_current_user, get_current_admin, get_current_superuser
 from app.core.security import decrypt_password
 from app.models.schemas import ReportCreate, ReportUpdate, ReportResponse, GridRequest, PivotDrillRequest
 from app.services.query_engine import QueryEngine, query_engine
 from app.services.rls import get_rls_filters, apply_rls_to_filtermodel
 from app.services.sql_validation import validate_select_query
+from app.services.report_versions import save_version, apply_snapshot
 from app.services.cache import cache
 
 logger = logging.getLogger(__name__)
@@ -148,6 +149,9 @@ async def update_report(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
+    # Versioning: salva lo stato corrente PRIMA di applicare le modifiche
+    await save_version(db, report, user.id)
+
     for field, value in data.model_dump(exclude_unset=True).items():
         if field == "default_metrics" and value:
             value = [m.model_dump() if hasattr(m, 'model_dump') else m for m in value]
@@ -178,9 +182,64 @@ async def delete_report(
     
     await db.delete(report)
     await db.commit()
-    
+
     # Invalidate cache
     await cache.invalidate_report(report_id)
+
+
+@router.get("/{report_id}/versions")
+async def list_report_versions(
+    report_id: int,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_superuser),
+):
+    """Storico delle versioni della definizione del report (SUPERUSER ONLY)."""
+    rows = (await db.execute(
+        select(ReportVersion)
+        .where(ReportVersion.report_id == report_id)
+        .order_by(ReportVersion.version_no.desc())
+    )).scalars().all()
+    return [
+        {
+            "id": r.id,
+            "version_no": r.version_no,
+            "snapshot": r.snapshot,
+            "created_by": r.created_by,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
+
+
+@router.post("/{report_id}/versions/{version_id}/restore", response_model=ReportResponse)
+async def restore_report_version(
+    report_id: int,
+    version_id: int,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_superuser),
+):
+    """Ripristina una versione precedente (versiona prima lo stato corrente). SUPERUSER ONLY."""
+    report = (await db.execute(select(Report).where(Report.id == report_id))).scalar_one_or_none()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    version = (await db.execute(
+        select(ReportVersion).where(
+            ReportVersion.id == version_id,
+            ReportVersion.report_id == report_id,
+        )
+    )).scalar_one_or_none()
+    if not version:
+        raise HTTPException(status_code=404, detail="Versione non trovata")
+
+    # Versiona lo stato corrente, poi applica lo snapshot scelto (ripristino annullabile)
+    await save_version(db, report, user.id)
+    apply_snapshot(report, version.snapshot)
+    await db.commit()
+    await db.refresh(report)
+    await cache.invalidate_report(report_id)
+    return report
+
 
 @router.put("/{report_id}/layout")
 async def save_layout(

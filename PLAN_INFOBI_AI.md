@@ -29,7 +29,7 @@
 - [x] RLS 2.6a: infrastruttura (tabella `rls_rules` + servizio + CRUD superuser) + wiring sul path pivot principale (filtri parametrizzati, inclusi nella cache key) + test
 - [x] RLS 2.6b: agganciati tutti i path dati (pivot-drill, grid, export, distinct-values) — copertura completa, filtri parametrizzati
 - [x] 2.7a: Validazione SQL prima del salvataggio report (solo SELECT/CTE, blocco DDL/DML + statement multipli) + test
-- [ ] 2.7b: Versioning definizioni report (storico + ripristino)
+- [x] 2.7b: Versioning definizioni report — tabella `report_versions`, snapshot ad ogni update, endpoint list/restore (superuser) + test e2e
 
 ## Fase 3 — Test & CI (per rendere sicuri i passi successivi)
 > Anticipata: i test si scrivono e si eseguono ad **ogni** step, non solo qui.
