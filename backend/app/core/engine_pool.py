@@ -2,7 +2,7 @@ import urllib.parse
 import hashlib
 from typing import Dict, Any
 from sqlalchemy import create_engine, Engine
-from sqlalchemy.pool import QueuePool
+from sqlalchemy.pool import QueuePool, NullPool
 
 # Singleton globale per mantenere i pool attivi in memoria
 _engines: Dict[str, Engine] = {}
@@ -23,23 +23,36 @@ def get_engine(db_type: str, config: Dict[str, Any]) -> Engine:
 
     # Costruzione URL SQLAlchemy
     url = _build_sqlalchemy_url(db_type, config)
-    
-    # Configurazione ottimizzata per evitare il Cold Start
-    engine = create_engine(
-        url,
-        poolclass=QueuePool,
-        pool_size=5,          # Mantiene 5 connessioni sempre aperte
-        max_overflow=10,      # Accetta picchi fino a 15
-        pool_timeout=30,      # Timeout attesa connessione libera
-        pool_recycle=3600,    # Ricicla connessioni ogni ora per evitare stale connections
-        pool_pre_ping=True,   # Verifica che la connessione sia viva prima di usarla
-        echo=False
-    )
-    
+
+    if db_type == 'sqlite':
+        # File locale: NullPool + check_same_thread False (uso da ThreadPoolExecutor)
+        engine = create_engine(
+            url,
+            poolclass=NullPool,
+            connect_args={'check_same_thread': False},
+            echo=False,
+        )
+    else:
+        # Configurazione ottimizzata per evitare il Cold Start
+        engine = create_engine(
+            url,
+            poolclass=QueuePool,
+            pool_size=5,          # Mantiene 5 connessioni sempre aperte
+            max_overflow=10,      # Accetta picchi fino a 15
+            pool_timeout=30,      # Timeout attesa connessione libera
+            pool_recycle=3600,    # Ricicla connessioni ogni ora per evitare stale connections
+            pool_pre_ping=True,   # Verifica che la connessione sia viva prima di usarla
+            echo=False
+        )
+
     _engines[key] = engine
     return engine
 
 def _build_sqlalchemy_url(db_type: str, config: Dict[str, Any]) -> str:
+    if db_type == 'sqlite':
+        # 'database' è il path del file (usare slash). Sorgente locale per demo/import.
+        return f"sqlite:///{config['database']}"
+
     user = urllib.parse.quote_plus(config['username'])
     password = urllib.parse.quote_plus(config['password'])
     host = config['host']
