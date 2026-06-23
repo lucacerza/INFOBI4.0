@@ -60,45 +60,47 @@ export default function DashboardsPage() {
   
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-end justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-muted">{dashboards.length} dashboard</p>
+          <h1 className="font-disp text-[26px] font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted text-sm mt-1">{dashboards.length} dashboard</p>
         </div>
-        
+
         {isAdmin && (
           <button
             onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent text-white rounded-lg"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition hover:brightness-110"
+            style={{ background: 'linear-gradient(100deg,#7B6CF5,#6A8DF5)' }}
           >
-            <Plus className="w-5 h-5" />
-            Nuova Dashboard
+            <Plus className="w-4 h-4" />
+            Nuova dashboard
           </button>
         )}
       </div>
       
       {showForm && (
-        <div className="bg-surface rounded-xl p-6 border mb-6">
-          <form onSubmit={handleCreate} className="flex gap-4">
+        <div className="bg-surface rounded-2xl p-5 border border-line mb-6">
+          <form onSubmit={handleCreate} className="flex gap-3">
             <input
               type="text"
               value={name}
               onChange={e => setName(e.target.value)}
               placeholder="Nome dashboard"
-              className="flex-1 px-3 py-2 border rounded-lg"
+              className="flex-1 px-3 py-2.5 border border-line rounded-xl focus:ring-2 focus:ring-accent focus:border-transparent"
               required
               autoFocus
             />
             <button
               type="button"
               onClick={() => setShowForm(false)}
-              className="px-4 py-2 text-muted hover:bg-ground rounded-lg"
+              className="px-4 py-2.5 text-muted hover:bg-ground rounded-xl"
             >
               Annulla
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-accent hover:bg-accent text-white rounded-lg"
+              className="px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:brightness-110"
+              style={{ background: 'linear-gradient(100deg,#7B6CF5,#6A8DF5)' }}
             >
               Crea
             </button>
@@ -108,17 +110,17 @@ export default function DashboardsPage() {
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {dashboards.map(d => (
-          <div key={d.id} className="bg-surface rounded-xl border p-5 group">
+          <div key={d.id} className="bg-surface rounded-2xl border border-line p-5 hover:border-accent transition group">
             <Link to={`/dashboards/${d.id}`} className="block">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-accent-soft text-accent-strong flex items-center justify-center">
                   <LayoutDashboard className="w-5 h-5" />
                 </div>
                 <h3 className="font-semibold group-hover:text-accent transition">
                   {d.name}
                 </h3>
               </div>
-              <p className="text-sm text-muted">
+              <p className="num text-sm text-muted">
                 {d.widgets?.length || 0} widget
               </p>
             </Link>
@@ -140,7 +142,7 @@ export default function DashboardsPage() {
         
         {dashboards.length === 0 && (
           <div className="col-span-full text-center py-12 text-muted">
-            <LayoutDashboard className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+            <LayoutDashboard className="w-12 h-12 mx-auto mb-4 text-muted opacity-50" />
             <p>Nessuna dashboard</p>
           </div>
         )}
