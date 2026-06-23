@@ -12,10 +12,14 @@ def get_engine(db_type: str, config: Dict[str, Any]) -> Engine:
     Restituisce un Engine SQLAlchemy con Connection Pooling configurato.
     Se l'engine esiste già per questa configurazione, lo riutilizza.
     """
-    # Chiave univoca per identificare la connessione (senza password in chiaro per sicurezza log)
-    key_data = f"{db_type}://{config['username']}@{config['host']}:{config['port']}/{config['database']}"
+    # Chiave univoca per identificare la connessione (senza password in chiaro per sicurezza log).
+    # .get(): sqlite usa solo 'database' (host/port/username/password assenti).
+    key_data = (
+        f"{db_type}://{config.get('username') or ''}@"
+        f"{config.get('host') or ''}:{config.get('port') or ''}/{config.get('database')}"
+    )
     # Aggiungi hash della password per unicità senza esporla
-    pwd_hash = hashlib.sha256(config['password'].encode()).hexdigest()[:16]
+    pwd_hash = hashlib.sha256((config.get('password') or '').encode()).hexdigest()[:16]
     key = f"{key_data}#{pwd_hash}"
     
     if key in _engines:

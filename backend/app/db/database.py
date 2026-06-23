@@ -173,6 +173,26 @@ class DashboardWidget(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 # ============================================
+# WAREHOUSE (DuckDB) - registro dataset materializzati
+# ============================================
+class WarehouseDataset(Base):
+    """Traccia una tabella materializzata nel warehouse DuckDB (mart per-report)."""
+    __tablename__ = "warehouse_datasets"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=False)
+    table_name = Column(String(255), nullable=False)          # nome tabella in DuckDB
+    source_connection_id = Column(Integer, ForeignKey("connections.id"))
+    source_report_id = Column(Integer, ForeignKey("reports.id", ondelete="SET NULL"), nullable=True)
+    source_query = Column(Text, nullable=False)
+    columns = Column(JSON, default=[])                        # [{name, dtype}] - per estensione/semantic layer
+    row_count = Column(Integer, default=0)
+    status = Column(String(50), default="ready")              # ready | syncing | error
+    last_error = Column(Text)
+    last_sync_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# ============================================
 # AUDIT LOG
 # ============================================
 class AuditLog(Base):

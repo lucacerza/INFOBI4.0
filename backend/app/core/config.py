@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     RATE_LIMIT_RPM: int = 120              # richieste max per finestra
     RATE_LIMIT_WINDOW_SECONDS: int = 60
 
+    # Datawarehouse (DuckDB)
+    WAREHOUSE_DIR: str = "./data/warehouse"
+
     # Backup automatico del DB applicativo (SQLite)
     BACKUP_ENABLED: bool = True
     BACKUP_DIR: str = "./data/backups"

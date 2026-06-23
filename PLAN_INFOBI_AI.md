@@ -66,6 +66,7 @@
 - [ ] Colonne Delta / Confronto (2024 vs 2023, %, running total) — reimplementare pulito (non il blocco `if False`)
 
 ## Fase 7 — Datawarehouse
+- [x] **Step A — DuckDB embedded + mart per-report**: file unico `data/warehouse/warehouse.duckdb` (config `WAREHOUSE_DIR`); modello `WarehouseDataset` (registro: ricetta+colonne+stato, in infobi.db backuppato → warehouse rigenerabile); `services/warehouse.py` (materialize_df / materialize_from_source / query_arrow / drop_table); API superuser `/api/warehouse` (from-report, list, refresh, rebuild-all, delete); fix sqlite in `engine_pool` (chiave senza host/user/port). Test: `tests/test_warehouse.py` (5, verde).
 - [ ] Catalogo schema per connessione (introspezione tabelle/colonne/tipi/relazioni) — base conoscitiva per l'AI
 - [ ] Metadati semantici su report/colonne (nome business, descrizione, unità, formato, misura/dimensione, aggregazione default)
 - [ ] DuckDB + Parquet, architettura medallion (bronze/silver/gold)
