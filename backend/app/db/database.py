@@ -1,7 +1,7 @@
 """Database models and initialization"""
 import logging
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, JSON, ForeignKey, Table
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, JSON, ForeignKey, Table, UniqueConstraint
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship
 from app.core.config import settings
@@ -128,6 +128,11 @@ class Report(Base):
     view_config = Column(JSON, default={})
     layout = Column(JSON, default={})
     
+    # Warehouse: se True le query (pivot/grid/schema/distinct) girano sul mart
+    # materializzato in DuckDB invece che sulla sorgente live (fallback automatico
+    # alla sorgente se il dataset non è ancora materializzato).
+    warehouse_backed = Column(Boolean, default=False)
+
     # Cache settings
     cache_enabled = Column(Boolean, default=True)
     cache_ttl = Column(Integer, default=3600)
@@ -170,6 +175,128 @@ class DashboardWidget(Base):
     title = Column(String(255))
     config = Column(JSON, default={})
     position = Column(JSON, default={})  # {x, y, w, h}
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# ============================================
+# WAREHOUSE (DuckDB) - registro dataset materializzati
+# ============================================
+class WarehouseDataset(Base):
+    """Traccia una tabella materializzata nel warehouse DuckDB (mart per-report)."""
+    __tablename__ = "warehouse_datasets"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=False)
+    table_name = Column(String(255), nullable=False)          # nome tabella in DuckDB
+    source_connection_id = Column(Integer, ForeignKey("connections.id"))
+    source_report_id = Column(Integer, ForeignKey("reports.id", ondelete="SET NULL"), nullable=True)
+    source_query = Column(Text, nullable=False)
+    columns = Column(JSON, default=[])                        # [{name, dtype}] - per estensione/semantic layer
+    row_count = Column(Integer, default=0)
+    status = Column(String(50), default="ready")              # ready | syncing | error
+    last_error = Column(Text)
+    last_sync_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# ============================================
+# SEMANTIC LAYER - metadati semantici per colonna (base per l'AI)
+# ============================================
+class ColumnMetadata(Base):
+    """
+    Metadati semantici di una colonna di un report (il "modello" delle BI:
+    misure/dimensioni, nome business, unità, formato). Arricchimento umano/AI,
+    separato dai fatti tecnici (lo schema fisico è introspezione live).
+    """
+    __tablename__ = "column_metadata"
+    __table_args__ = (UniqueConstraint("report_id", "column_name", name="uq_colmeta_report_column"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    report_id = Column(Integer, ForeignKey("reports.id", ondelete="CASCADE"), nullable=False, index=True)
+    column_name = Column(String(255), nullable=False)        # colonna fisica nel risultato del report
+    business_name = Column(String(255))                      # nome leggibile (es. "Fatturato netto")
+    description = Column(Text)                                # descrizione per l'utente/AI
+    role = Column(String(32), default="dimension")           # dimension | measure | time | attribute
+    data_type = Column(String(32), default="string")         # string | number | date (semantico)
+    unit = Column(String(32))                                # es. "€", "pz", "%"
+    format = Column(String(64))                              # es. "#,##0.00", "0%", "dd/mm/yyyy"
+    default_aggregation = Column(String(16), default="none") # sum | avg | count | min | max | none
+    is_hidden = Column(Boolean, default=False)               # escludi da UI/AI
+    is_certified = Column(Boolean, default=False)            # colonna "certificata": usabile dall'AI in modalità governata
+    extra = Column(JSON, default={})                         # estensibilità: sinonimi NL, FK target, ecc.
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ============================================
+# AI - log delle traduzioni NL (governance/audit/feedback)
+# ============================================
+class AITranslationLog(Base):
+    """Traccia ogni richiesta AI (NL->pivot, insight): domanda, esito, feedback."""
+    __tablename__ = "ai_translation_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    username = Column(String(255))
+    report_id = Column(Integer, ForeignKey("reports.id", ondelete="SET NULL"), nullable=True)
+    kind = Column(String(32))                # pivot | insight
+    question = Column(Text)
+    result = Column(JSON, default={})        # config prodotta (pivot) o sintesi (insight)
+    status = Column(String(16), default="ok")  # ok | rejected | error
+    error = Column(Text)
+    provider = Column(String(32))
+    model = Column(String(64))
+    latency_ms = Column(Integer)
+    helpful = Column(Boolean)                # feedback utente (null = nessun feedback)
+    feedback_note = Column(Text)
+
+# ============================================
+# AUDIT LOG
+# ============================================
+class AuditLog(Base):
+    """Traccia eventi sensibili: login, mutazioni (CRUD), export, ecc."""
+    __tablename__ = "audit_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    username = Column(String(255))          # denormalizzato: l'utente potrebbe essere cancellato
+    action = Column(String(255))            # es. "login", "POST /api/connections"
+    method = Column(String(10))
+    path = Column(String(512))
+    status_code = Column(Integer)
+    success = Column(Boolean, default=True)
+    ip_address = Column(String(64))
+    detail = Column(Text)
+
+# ============================================
+# REPORT VERSIONING
+# ============================================
+class ReportVersion(Base):
+    """Snapshot storico della definizione di un report (per ripristino/audit)."""
+    __tablename__ = "report_versions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    report_id = Column(Integer, ForeignKey("reports.id", ondelete="CASCADE"), nullable=False)
+    version_no = Column(Integer, nullable=False)
+    snapshot = Column(JSON, default={})   # stato della definizione al momento
+    created_by = Column(Integer)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# ============================================
+# ROW-LEVEL SECURITY
+# ============================================
+class RlsRule(Base):
+    """
+    Regola di Row-Level Security: per un report, limita le righe visibili a un
+    soggetto (utente o ruolo) ai soli valori consentiti su una colonna.
+    Applicata come filtro server-side parametrizzato (IN).
+    """
+    __tablename__ = "rls_rules"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    report_id = Column(Integer, ForeignKey("reports.id", ondelete="CASCADE"), nullable=False)
+    subject_type = Column(String(20), nullable=False)   # 'user' | 'role'
+    subject = Column(String(255), nullable=False)        # username oppure nome ruolo
+    column = Column(String(255), nullable=False)
+    allowed_values = Column(JSON, default=[])            # valori consentiti (filtro IN)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 # ============================================

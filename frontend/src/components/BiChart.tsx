@@ -396,10 +396,10 @@ export default function BiChart({
   if (loading) {
     return (
       <div
-        className="flex items-center justify-center bg-white rounded-lg border"
+        className="flex items-center justify-center bg-surface rounded-lg border"
         style={{ height }}
       >
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
       </div>
     );
   }
@@ -408,7 +408,7 @@ export default function BiChart({
   if (error) {
     return (
       <div
-        className="flex items-center justify-center bg-white rounded-lg border text-red-500"
+        className="flex items-center justify-center bg-surface rounded-lg border text-neg"
         style={{ height }}
       >
         <p>{error}</p>
@@ -420,7 +420,7 @@ export default function BiChart({
   if (!chartOptions || data.length === 0) {
     return (
       <div
-        className="flex flex-col items-center justify-center bg-white rounded-lg border text-slate-400"
+        className="flex flex-col items-center justify-center bg-surface rounded-lg border text-muted"
         style={{ height }}
       >
         <BarChart3 className="w-12 h-12 mb-2 opacity-50" />
@@ -439,14 +439,14 @@ export default function BiChart({
 
     return (
       <div
-        className="flex flex-col items-center justify-center bg-white rounded-lg border p-6"
+        className="flex flex-col items-center justify-center bg-surface rounded-lg border p-6"
         style={{ height }}
       >
-        <TrendingUp className="w-8 h-8 text-blue-500 mb-2" />
-        <div className="text-3xl font-bold text-slate-800">
+        <TrendingUp className="w-8 h-8 text-accent mb-2" />
+        <div className="text-3xl font-bold text-ink">
           {formatNumber(totalValue)}
         </div>
-        <div className="text-sm text-slate-500 mt-1">
+        <div className="text-sm text-muted mt-1">
           {title || kpiMetric.name}
         </div>
       </div>
@@ -474,7 +474,7 @@ export default function BiChart({
 
   return (
     <div
-      className="bg-white rounded-lg border overflow-hidden"
+      className="bg-surface rounded-lg border overflow-hidden"
       style={{ height, cursor: onDrillDown ? 'pointer' : 'default' }}
     >
       <ReactECharts
@@ -528,8 +528,8 @@ export function ChartTypeSelector({
           onClick={() => onChange(type)}
           className={`p-2 rounded-lg transition ${
             value === type
-              ? 'bg-blue-100 text-blue-700'
-              : 'hover:bg-slate-100 text-slate-500'
+              ? 'bg-accent-soft text-accent-strong'
+              : 'hover:bg-ground text-muted'
           }`}
           title={label}
         >

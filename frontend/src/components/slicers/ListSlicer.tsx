@@ -9,6 +9,7 @@
  */
 import { useState, useEffect } from 'react';
 import { Search, Check, X, Loader2 } from 'lucide-react';
+import { apiFetch } from '../../services/apiClient';
 
 interface ListSlicerProps {
   reportId: number;
@@ -33,17 +34,13 @@ export default function ListSlicer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const getToken = () => localStorage.getItem('token');
-
   // Load distinct values from backend
   useEffect(() => {
     const loadValues = async () => {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/pivot/${reportId}/distinct/${column}`, {
-          headers: { 'Authorization': `Bearer ${getToken()}` }
-        });
+        const res = await apiFetch(`/api/pivot/${reportId}/distinct/${column}`);
         if (res.ok) {
           const data = await res.json();
           const values = data.values.map((v: any) => String(v));
@@ -93,10 +90,10 @@ export default function ListSlicer({
     filteredValues.every(v => selectedValues.includes(v));
 
   return (
-    <div className="bg-white rounded-lg border shadow-sm">
+    <div className="bg-surface rounded-lg border shadow-sm">
       {/* Header */}
-      <div className="px-3 py-2 border-b bg-slate-50">
-        <h4 className="font-medium text-sm text-slate-700">
+      <div className="px-3 py-2 border-b bg-surface-2">
+        <h4 className="font-medium text-sm text-ink">
           {title || column}
         </h4>
       </div>
@@ -104,19 +101,19 @@ export default function ListSlicer({
       {/* Search */}
       <div className="p-2 border-b">
         <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cerca..."
-            className="w-full pl-8 pr-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full pl-8 pr-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-1 focus:ring-accent"
           />
           {search && (
             <button
               type="button"
               onClick={() => setSearch('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-muted"
               title="Cancella ricerca"
             >
               <X className="w-4 h-4" />
@@ -130,7 +127,7 @@ export default function ListSlicer({
         <button
           type="button"
           onClick={selectAll}
-          className="text-blue-600 hover:underline"
+          className="text-accent hover:underline"
         >
           Seleziona tutti
         </button>
@@ -138,12 +135,12 @@ export default function ListSlicer({
         <button
           type="button"
           onClick={deselectAll}
-          className="text-blue-600 hover:underline"
+          className="text-accent hover:underline"
         >
           Deseleziona
         </button>
         {selectedValues.length > 0 && (
-          <span className="ml-auto text-slate-500">
+          <span className="ml-auto text-muted">
             {selectedValues.length} selezionati
           </span>
         )}
@@ -156,14 +153,14 @@ export default function ListSlicer({
       >
         {loading ? (
           <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+            <Loader2 className="w-5 h-5 animate-spin text-accent" />
           </div>
         ) : error ? (
-          <div className="text-center py-4 text-red-500 text-sm">
+          <div className="text-center py-4 text-neg text-sm">
             {error}
           </div>
         ) : filteredValues.length === 0 ? (
-          <div className="text-center py-4 text-slate-400 text-sm">
+          <div className="text-center py-4 text-muted text-sm">
             Nessun valore trovato
           </div>
         ) : (
@@ -174,8 +171,8 @@ export default function ListSlicer({
                 <div
                   key={value}
                   onClick={() => toggleValue(value)}
-                  className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-slate-50 ${
-                    isSelected ? 'bg-blue-50' : ''
+                  className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-surface-2 ${
+                    isSelected ? 'bg-accent-soft' : ''
                   }`}
                 >
                   <input
@@ -187,12 +184,12 @@ export default function ListSlicer({
                   />
                   <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
                     isSelected
-                      ? 'bg-blue-600 border-blue-600'
+                      ? 'bg-accent border-accent'
                       : 'border-slate-300'
                   }`}>
                     {isSelected && <Check className="w-3 h-3 text-white" />}
                   </div>
-                  <span className="text-sm text-slate-700 truncate flex-1">
+                  <span className="text-sm text-ink truncate flex-1">
                     {value || '(vuoto)'}
                   </span>
                 </div>
@@ -203,7 +200,7 @@ export default function ListSlicer({
       </div>
 
       {/* Footer with count */}
-      <div className="px-3 py-1.5 border-t bg-slate-50 text-xs text-slate-500">
+      <div className="px-3 py-1.5 border-t bg-surface-2 text-xs text-muted">
         {filteredValues.length} di {allValues.length} valori
       </div>
     </div>

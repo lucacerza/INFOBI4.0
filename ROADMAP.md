@@ -1,4 +1,4 @@
-# INFOBI 4.0 - Roadmap Ufficiale
+# INFOBI Pulse - Roadmap Ufficiale
 
 > **Versione:** 2.0
 > **Data:** 28 Gennaio 2026

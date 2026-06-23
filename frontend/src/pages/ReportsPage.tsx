@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { reportsApi } from '../services/api';
+import { apiFetch } from '../services/apiClient';
 import { useAuthStore } from '../stores/authStore';
 import {
   FileText,
@@ -10,7 +11,8 @@ import {
   Clock,
   Database,
   Edit,
-  Trash
+  Trash,
+  Sparkles
 } from 'lucide-react';
 
 interface Report {
@@ -23,10 +25,23 @@ interface Report {
   updated_at: string;
 }
 
+// Tinte Pulse per le tile-icona (variazione cromatica come nel mockup)
+const TINTS = [
+  { color: '#A99BFF', bg: 'rgba(123,108,245,.16)' },
+  { color: '#4FE3C1', bg: 'rgba(79,227,193,.14)' },
+  { color: '#F5A65B', bg: 'rgba(245,166,91,.14)' },
+  { color: '#F571B0', bg: 'rgba(245,113,176,.14)' },
+  { color: '#6BD9E8', bg: 'rgba(107,217,232,.14)' },
+];
+
 export default function ReportsPage() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [catQ, setCatQ] = useState('');
+  const [catBusy, setCatBusy] = useState(false);
+  const [catAnswer, setCatAnswer] = useState<string | null>(null);
+  const [catSources, setCatSources] = useState<any[]>([]);
   const { user } = useAuthStore();
   const isSuperuser = user?.role === 'superuser';  // Solo superuser può creare/modificare/eliminare report
   
@@ -56,11 +71,7 @@ export default function ReportsPage() {
     }
 
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`/api/reports/${reportId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+      const res = await apiFetch(`/api/reports/${reportId}`, { method: 'DELETE' });
 
       if (!res.ok) throw new Error('Errore durante l\'eliminazione');
 
@@ -72,10 +83,33 @@ export default function ReportsPage() {
     }
   };
   
+  const handleCatalogChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = catQ.trim();
+    if (!q) return;
+    setCatBusy(true);
+    setCatAnswer(null);
+    try {
+      const res = await apiFetch('/api/ai/catalog/chat', {
+        method: 'POST',
+        body: JSON.stringify({ question: q }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Errore AI');
+      setCatAnswer(data.answer || 'Nessuna risposta.');
+      setCatSources(data.sources || []);
+    } catch (err: any) {
+      setCatAnswer(`Errore: ${err.message}`);
+      setCatSources([]);
+    } finally {
+      setCatBusy(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
       </div>
     );
   }
@@ -85,16 +119,17 @@ export default function ReportsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Report</h1>
-          <p className="text-gray-500">{reports.length} report disponibili</p>
+          <h1 className="font-disp text-[26px] font-bold tracking-tight text-ink">Report</h1>
+          <p className="text-muted text-sm mt-1">{reports.length} report disponibili</p>
         </div>
-        
+
         {isSuperuser && (
           <Link
             to="/reports/new"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition hover:brightness-110"
+            style={{ background: 'linear-gradient(100deg,#7B6CF5,#6A8DF5)' }}
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="w-4 h-4" />
             Nuovo Report
           </Link>
         )}
@@ -102,56 +137,95 @@ export default function ReportsPage() {
       
       {/* Search */}
       <div className="relative mb-6">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted" />
         <input
           type="text"
           placeholder="Cerca report..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full pl-10 pr-4 py-3 border border-line rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent"
         />
       </div>
       
+      {/* Catalogo AI: chiedi cosa esiste nel catalogo */}
+      <div className="bg-surface border border-line rounded-2xl p-4 mb-6">
+        <form onSubmit={handleCatalogChat} className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-accent shrink-0" />
+          <input
+            value={catQ}
+            onChange={e => setCatQ(e.target.value)}
+            placeholder="Chiedi al catalogo: es. «quali report parlano di vendite?»"
+            className="flex-1 px-3 py-2 text-sm border border-line rounded-xl focus:ring-2 focus:ring-accent focus:border-transparent"
+          />
+          <button
+            type="submit"
+            disabled={catBusy || !catQ.trim()}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold disabled:opacity-50 hover:brightness-110 shrink-0"
+            style={{ background: 'linear-gradient(100deg,#7B6CF5,#6A8DF5)' }}
+          >
+            {catBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            Chiedi
+          </button>
+        </form>
+        {catAnswer && (
+          <div className="mt-3 pt-3 border-t border-line">
+            <p className="text-sm text-ink whitespace-pre-line">{catAnswer}</p>
+            {catSources.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {catSources.map((s: any) => (
+                  <Link key={s.report_id} to={`/reports/${s.report_id}`}
+                    className="text-xs px-2 py-1 rounded-lg bg-accent-soft text-accent-strong hover:brightness-105">
+                    {s.name}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Reports grid */}
       {filteredReports.length === 0 ? (
         <div className="text-center py-12">
           <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-500">Nessun report trovato</p>
+          <p className="text-muted">Nessun report trovato</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredReports.map(report => (
+          {filteredReports.map((report, idx) => {
+            const t = TINTS[idx % TINTS.length];
+            return (
             <div
               key={report.id}
-              className="relative p-5 bg-white border border-gray-100 rounded-xl hover:shadow-lg hover:border-blue-200 transition group"
+              className="relative p-5 bg-surface border border-line rounded-2xl hover:shadow-lg hover:border-accent transition group"
             >
               <Link
                 to={`/reports/${report.id}/pivot`}
                 className="block"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-500 group-hover:text-white transition">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: t.bg, color: t.color }}>
                     <FileText className="w-5 h-5" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-800 truncate group-hover:text-blue-600 transition">
+                    <h3 className="font-semibold text-ink truncate group-hover:text-accent transition">
                       {report.name}
                     </h3>
                     {report.description && (
-                      <p className="text-sm text-gray-500 mt-1 line-clamp-2">
+                      <p className="text-sm text-muted mt-1 line-clamp-2">
                         {report.description}
                       </p>
                     )}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4 mt-4 pt-4 border-t border-gray-100 text-xs text-gray-400">
+                <div className="flex items-center gap-4 mt-4 pt-4 border-t border-line text-xs text-muted">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5" />
                     {new Date(report.updated_at).toLocaleDateString('it-IT')}
                   </span>
                   {report.cache_enabled && (
-                    <span className="flex items-center gap-1 text-green-500">
+                    <span className="flex items-center gap-1 text-pos">
                       <Database className="w-3.5 h-3.5" />
                       Cache
                     </span>
@@ -168,14 +242,14 @@ export default function ReportsPage() {
                       e.stopPropagation();
                       handleDelete(report.id, report.name);
                     }}
-                    className="p-2 bg-slate-100 hover:bg-red-600 hover:text-white rounded-lg transition"
+                    className="p-2 bg-ground hover:bg-red-600 hover:text-white rounded-lg transition"
                     title="Elimina report"
                   >
                     <Trash className="w-4 h-4" />
                   </button>
                   <Link
                     to={`/reports/${report.id}/edit`}
-                    className="p-2 bg-slate-100 hover:bg-purple-600 hover:text-white rounded-lg transition"
+                    className="p-2 bg-ground hover:bg-purple-600 hover:text-white rounded-lg transition"
                     onClick={(e) => e.stopPropagation()}
                     title="Modifica report"
                   >
@@ -184,7 +258,8 @@ export default function ReportsPage() {
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

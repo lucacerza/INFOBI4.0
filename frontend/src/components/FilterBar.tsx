@@ -6,6 +6,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Filter, Plus, X, Loader2 } from 'lucide-react';
 import FilterBarDropdown from './FilterBarDropdown';
+import { selectedValuesOf } from '../stores/dashboardStore';
+import { apiFetch } from '../services/apiClient';
 
 export interface FilterBarConfig {
   reportId: number;
@@ -80,13 +82,9 @@ export default function FilterBar({
     return total + Object.keys(reportFilters).length;
   }, 0);
 
-  // Get selected values for a filter from store
+  // Get selected values for a filter from store (accessor unico, gestisce single e multi)
   const getSelectedValues = (reportId: number, column: string): string[] => {
-    const f = filtersByReport[reportId]?.[column];
-    if (!f) return [];
-    if (f.values && Array.isArray(f.values)) return f.values;
-    if (f.filter) return [f.filter];
-    return [];
+    return selectedValuesOf(filtersByReport[reportId]?.[column]);
   };
 
   // Check if multiple reports are used
@@ -198,8 +196,6 @@ function AddFilterPopover({
   const [loadingSchema, setLoadingSchema] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
 
-  const getToken = () => localStorage.getItem('token');
-
   // Close on click outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -219,9 +215,7 @@ function AddFilterPopover({
     if (!selectedReport) return;
     setLoadingSchema(true);
     setSchema(null);
-    fetch(`/api/pivot/${selectedReport}/schema`, {
-      headers: { 'Authorization': `Bearer ${getToken()}` }
-    })
+    apiFetch(`/api/pivot/${selectedReport}/schema`)
       .then(res => res.json())
       .then(data => setSchema(data))
       .catch(() => setSchema(null))

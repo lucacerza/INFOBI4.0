@@ -2,12 +2,89 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   Design tokens INFOBI — direzione "Studio" + numeri mono
+   Light = :root, Dark = .dark (toggle classe su <html>)
+   ============================================================ */
+:root {
+  /* Pulse — variante chiara */
+  --c-ground: #F4F5F8;
+  --c-surface: #FFFFFF;
+  --c-surface-2: #FAFAFC;
+  --c-text: #16171D;
+  --c-muted: #6B7180;
+  --c-border: #E6E8EF;
+  --c-accent: #7B6CF5;
+  --c-accent-soft: #EFEDFE;
+  --c-accent-strong: #5B4FD6;
+  --c-up: #0E9F6E;
+  --c-down: #E0683C;
+  --font-num: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --font-disp: "Bricolage Grotesque", "Instrument Sans", system-ui, sans-serif;
+  --scroll-track: #eef0f3;
+  --scroll-thumb: #cfd3dc;
+}
+
+.dark {
+  /* Pulse — dark premium (default) */
+  --c-ground: #07080C;
+  --c-surface: #15161D;
+  --c-surface-2: #0E0F15;
+  --c-text: #ECEDF2;
+  --c-muted: #9598A6;
+  --c-border: #23252F;
+  --c-accent: #7B6CF5;
+  --c-accent-soft: rgba(123, 108, 245, 0.16);
+  --c-accent-strong: #A99BFF;
+  --c-up: #4FE3C1;
+  --c-down: #F5A65B;
+  --scroll-track: #07080C;
+  --scroll-thumb: rgba(255, 255, 255, 0.12);
+}
+
 /* Base styles */
 html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
 }
+
+body {
+  background: var(--c-ground);
+  color: var(--c-text);
+  font-family: "Instrument Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Numeri/dati: monospaziato tabellare (allineamento in colonna) */
+.num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Form control: colore/sfondo dai token così restano leggibili anche in dark.
+   In @layer base => qualsiasi utility Tailwind (bg-*, text-*) vince dove serve
+   (es. campi a tema scuro di FilterBar/BiGridConfig). */
+@layer base {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    color: var(--c-text);
+    background-color: var(--c-surface);
+    border-color: var(--c-border);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--c-muted);
+    opacity: 1;
+  }
+}
+
+/* Input "vetro" della login Pulse (stile fisso scuro, indipendente dal tema) */
+.pulse-input:focus {
+  border-color: #7B6CF5 !important;
+  box-shadow: 0 0 0 4px rgba(123, 108, 245, 0.18);
+}
+.pulse-input::placeholder { color: #6B6E7A; }
 
 /* Perspective viewer sizing */
 perspective-viewer {
@@ -22,16 +99,16 @@ perspective-viewer {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--scroll-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: var(--scroll-thumb);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a1a1a1;
+  background: var(--c-muted);
 }
 
 /* Line clamp utility */

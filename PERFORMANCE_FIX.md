@@ -1,4 +1,4 @@
-# 🔧 Risoluzione Problemi Performance INFOBI 4.0
+# 🔧 Risoluzione Problemi Performance INFOBI Pulse
 
 ## ✅ MODIFICHE APPLICATE
 

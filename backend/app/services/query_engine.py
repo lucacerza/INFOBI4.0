@@ -18,6 +18,7 @@ from io import BytesIO
 from sqlalchemy import text
 from app.models.schemas import GridRequest, PivotDrillRequest
 from app.core.engine_pool import get_engine
+from app.core.limits import clamp_rows
 
 logger = logging.getLogger(__name__)
 
@@ -306,13 +307,6 @@ class QueryEngine:
             return df.to_arrow()
 
     @staticmethod
-    def _execute_df_sync(db_type: str, config: dict, query: str) -> pl.DataFrame:
-        """Synchronous query execution returning Polars DataFrame (for Pivot/Split)"""
-        engine = get_engine(db_type, config)
-        with engine.connect() as conn:
-            return pl.read_database(query, connection=conn)
-
-    @staticmethod
     def _execute_df_with_params_sync(
         db_type: str,
         config: dict,
@@ -443,7 +437,7 @@ class QueryEngine:
 
             # CASE 1: No group_by and no metrics → FLAT TABLE (raw data with all columns)
             if not group_by and not metrics:
-                row_limit = limit if limit else 10000
+                row_limit = clamp_rows(limit)  # cost guard: cap configurabile (MAX_ROWS_PREVIEW)
                 limited_query = f"SELECT TOP {row_limit} * FROM ({base_query}) AS raw_data" if is_mssql else f"SELECT * FROM ({base_query}) AS raw_data LIMIT {row_limit}"
 
                 loop = asyncio.get_event_loop()
@@ -461,7 +455,7 @@ class QueryEngine:
                 with ipc.new_stream(sink, arrow_table.schema) as writer:
                     writer.write_table(arrow_table)
 
-                elapsed = (time.perf_counter() - start) * 1000
+                elapsed = (time.perf_counter() - start_total) * 1000
                 logger.info(f"📊 FLAT TABLE mode: {arrow_table.num_rows} rows, {len(arrow_table.schema)} columns ({elapsed:.1f}ms)")
                 return sink.getvalue(), arrow_table.num_rows, elapsed
 
@@ -469,43 +463,50 @@ class QueryEngine:
             start_build = time.perf_counter()
             select_parts = []
             
-            # Group by columns
-            for col in group_by:
+            # Group by columns (identificatori sanitizzati una volta, riusati anche nel GROUP BY)
+            safe_group_by = [_sanitize_column_name(c) for c in group_by]
+            for col in safe_group_by:
                 select_parts.append(f'[{col}]' if is_mssql else f'"{col}"')
-            
+
             # Metrics with aggregations
+            allowed_aggs = {'SUM', 'AVG', 'COUNT', 'MIN', 'MAX'}
             for m in metrics:
                 if m.get('type') == 'margin':
                     # Margin formula: (revenue - cost) / revenue * 100
-                    rev = m.get('revenueField', m.get('field', 'Venduto'))
-                    cost = m.get('costField', 'Costo')
-                    col_name = m.get('name', 'MarginePerc')
+                    # Nessun default hardcoded: i campi devono arrivare dalla config
+                    rev = _sanitize_column_name(m.get('revenueField', m.get('field', '')))
+                    cost = _sanitize_column_name(m.get('costField', ''))
+                    col_name = _sanitize_column_name(m.get('name', '')) or 'margin'
+                    if not rev or not cost:
+                        continue  # config incompleta: salta la metrica invece di usare colonne inventate
                     if is_mssql:
                         select_parts.append(f'''
-                            CASE 
-                                WHEN SUM([{rev}]) = 0 THEN 0 
+                            CASE
+                                WHEN SUM([{rev}]) = 0 THEN 0
                                 ELSE ROUND(CAST((SUM([{rev}]) - SUM([{cost}])) * 100.0 / SUM([{rev}]) AS DECIMAL(10,2)), 2)
                             END AS [{col_name}]
                         ''')
                     else:
                         select_parts.append(f'''
-                            CASE 
-                                WHEN SUM("{rev}") = 0 THEN 0 
+                            CASE
+                                WHEN SUM("{rev}") = 0 THEN 0
                                 ELSE ROUND(CAST((SUM("{rev}") - SUM("{cost}")) * 100.0 / SUM("{rev}") AS DECIMAL(10,2)), 2)
                             END AS "{col_name}"
                         ''')
                 else:
                     agg = m.get('aggregation', 'SUM').upper()
                     field = m.get('field', '')
-                    name = m.get('name', field)
-                    if field:
-                        # FIX: Handle COUNT(*) correctly without quoting *
+                    name = _sanitize_column_name(m.get('name', field) or field)
+                    if field and agg in allowed_aggs:
+                        # Handle COUNT(*) correctly without quoting *
                         if field == '*':
                             select_parts.append(f'{agg}(*) AS [{name}]' if is_mssql else f'{agg}(*) AS "{name}"')
-                        elif is_mssql:
-                            select_parts.append(f'{agg}([{field}]) AS [{name}]')
                         else:
-                            select_parts.append(f'{agg}("{field}") AS "{name}"')
+                            cf = _sanitize_column_name(field)
+                            if is_mssql:
+                                select_parts.append(f'{agg}([{cf}]) AS [{name}]')
+                            else:
+                                select_parts.append(f'{agg}("{cf}") AS "{name}"')
             
             # If no select parts, select all
             if not select_parts:
@@ -513,15 +514,15 @@ class QueryEngine:
             
             # Build GROUP BY with ROLLUP for initial flat loading 
             # (Note: This old execute_pivot might be deprecated by execute_pivot_drill later)
-            if group_by:
+            if safe_group_by:
                 if is_mssql:
-                    group_clause = ', '.join(f'[{col}]' for col in group_by)
+                    group_clause = ', '.join(f'[{col}]' for col in safe_group_by)
                     # Use standard grouping for now to avoid complexity of handling rollup structure in UI
                     # unless standard grouping is requested.
-                    group_by_sql = f"GROUP BY {group_clause}" 
+                    group_by_sql = f"GROUP BY {group_clause}"
                     order_by_sql = f"ORDER BY {group_clause}"
                 else:
-                    group_clause = ', '.join(f'"{col}"' for col in group_by)
+                    group_clause = ', '.join(f'"{col}"' for col in safe_group_by)
                     group_by_sql = f"GROUP BY {group_clause}"
                     order_by_sql = f"ORDER BY {group_clause}"
             else:
@@ -602,87 +603,93 @@ class QueryEngine:
         start = time.perf_counter()
         
         try:
-            # 1. Build WHERE clause (Basic implementation - requires sanitization in prod)
+            # 1. Build WHERE clause (parameterized — no value interpolation)
+            is_mssql = db_type == "mssql"
+
+            def _col(name: str) -> str:
+                clean = _sanitize_column_name(name)
+                return f"[{clean}]" if is_mssql else f'"{clean}"'
+
             where_clauses = []
-            
+            params: Dict[str, Any] = {}
+            param_counter = 0
+
             for col, filter_def in request.filterModel.items():
-                # Basic sanitization for col name to prevent obvious injection
-                clean_col = "".join(c for c in col if c.isalnum() or c in '_')
-                
+                column = _col(col)
+                ftype = filter_def.type
                 val = filter_def.filter
-                if isinstance(val, str):
-                    val = val.replace("'", "''") # Escape single quotes
-                    
-                if filter_def.type == 'contains':
-                    where_clauses.append(f"{clean_col} LIKE '%{val}%'")
-                elif filter_def.type == 'equals':
-                    if isinstance(val, str):
-                        where_clauses.append(f"{clean_col} = '{val}'")
-                    else:
-                        where_clauses.append(f"{clean_col} = {val}")
-                elif filter_def.type == 'startsWith':
-                    where_clauses.append(f"{clean_col} LIKE '{val}%'")
-                elif filter_def.type == 'notEqual':
-                    if isinstance(val, str): where_clauses.append(f"{clean_col} != '{val}'")
-                    else: where_clauses.append(f"{clean_col} != {val}")
-                elif filter_def.type == 'greaterThan':
-                    where_clauses.append(f"{clean_col} > {val}")
-                elif filter_def.type == 'greaterThanOrEqual':
-                    where_clauses.append(f"{clean_col} >= {val}")
-                elif filter_def.type == 'lessThan':
-                    where_clauses.append(f"{clean_col} < {val}")
-                elif filter_def.type == 'lessThanOrEqual':
-                    where_clauses.append(f"{clean_col} <= {val}")
-                elif filter_def.type == 'isNotNull':
-                    where_clauses.append(f"{clean_col} IS NOT NULL")
-                elif filter_def.type == 'isNull':
-                    where_clauses.append(f"{clean_col} IS NULL")
-            
+
+                if ftype == 'isNotNull':
+                    where_clauses.append(f"{column} IS NOT NULL")
+                    continue
+                if ftype == 'isNull':
+                    where_clauses.append(f"{column} IS NULL")
+                    continue
+                if ftype == 'in' and filter_def.values:
+                    placeholders = []
+                    for v in filter_def.values:
+                        pname = f"p{param_counter}"; param_counter += 1
+                        placeholders.append(f":{pname}")
+                        params[pname] = v
+                    where_clauses.append(f"{column} IN ({', '.join(placeholders)})")
+                    continue
+
+                # Single-value operators (value always bound as a parameter)
+                op_map = {
+                    'equals': '=', 'notEqual': '!=',
+                    'greaterThan': '>', 'greaterThanOrEqual': '>=',
+                    'lessThan': '<', 'lessThanOrEqual': '<=',
+                }
+                pname = f"p{param_counter}"
+                if ftype == 'contains':
+                    where_clauses.append(f"{column} LIKE :{pname}")
+                    params[pname] = f"%{val}%"; param_counter += 1
+                elif ftype == 'startsWith':
+                    where_clauses.append(f"{column} LIKE :{pname}")
+                    params[pname] = f"{val}%"; param_counter += 1
+                elif ftype in op_map:
+                    where_clauses.append(f"{column} {op_map[ftype]} :{pname}")
+                    params[pname] = val; param_counter += 1
+
             where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
-            
-            # 2. Build ORDER BY
+
+            # 2. Build ORDER BY (column sanitized, direction whitelisted)
             order_clauses = []
             for sort in request.sortModel:
-                clean_col = "".join(c for c in sort.colId if c.isalnum() or c in '_')
                 direction = "DESC" if sort.sort == "desc" else "ASC"
-                order_clauses.append(f"{clean_col} {direction}")
-            
+                order_clauses.append(f"{_col(sort.colId)} {direction}")
             order_sql = " ORDER BY " + ", ".join(order_clauses) if order_clauses else ""
-            
+
             # 3. Construct SQL
-            is_mssql = db_type == "mssql"
             limit = request.endRow - request.startRow
             offset = request.startRow
-            
-            # Wrap base query to treat it as a table
             wrapped_base = f"SELECT * FROM ({base_query}) AS base"
-            full_sql_structure = f"{wrapped_base} {where_sql}"
-            
-            # Get Total Count
+            full_sql_structure = f"{wrapped_base}{where_sql}"
+
             count_query = f"SELECT COUNT(*) as total FROM ({full_sql_structure}) AS count_tbl"
-            
+
             engine = get_engine(db_type, config)
             with engine.connect() as conn:
-                count_df = pl.read_database(count_query, connection=conn)
-                total_rows = int(count_df['total'][0]) if not count_df.is_empty() else 0
-            
+                count_res = conn.execute(text(count_query), params) if params else conn.execute(text(count_query))
+                count_row = count_res.fetchone()
+                total_rows = int(count_row[0]) if count_row and count_row[0] is not None else 0
+
             # Fetch Page
             if is_mssql:
                 if not order_sql:
-                     order_sql = "ORDER BY (SELECT NULL)"
-                data_query = f"{full_sql_structure} {order_sql} OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
+                    order_sql = " ORDER BY (SELECT NULL)"
+                data_query = f"{full_sql_structure}{order_sql} OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
             else:
-                data_query = f"{full_sql_structure} {order_sql} LIMIT {limit} OFFSET {offset}"
-            
-            # Execute
+                data_query = f"{full_sql_structure}{order_sql} LIMIT {limit} OFFSET {offset}"
+
             with engine.connect() as conn:
-                data_df = pl.read_database(data_query, connection=conn)
-            
-            rows = data_df.to_dicts()
-            
+                data_res = conn.execute(text(data_query), params) if params else conn.execute(text(data_query))
+                col_names = list(data_res.keys())
+                rows = [dict(zip(col_names, r)) for r in data_res.fetchall()]
+
             elapsed = (time.perf_counter() - start) * 1000
             logger.info(f"Grid query: {len(rows)}/{total_rows} rows in {elapsed:.1f}ms")
-            
+
             return rows, total_rows, elapsed
             
         except Exception as e:
@@ -876,33 +883,29 @@ class QueryEngine:
             is_mssql_drill = db_type == "mssql"
 
             # Build HAVING clause from havingModel
+            # (aggregazione su whitelist, valore di confronto SEMPRE come bound param)
             having_sql = ""
             if request.havingModel:
+                allowed_aggs = {'SUM', 'AVG', 'COUNT', 'MIN', 'MAX'}
+                having_ops = {
+                    'greaterThan': '>', 'greaterThanOrEqual': '>=',
+                    'lessThan': '<', 'lessThanOrEqual': '<=',
+                    'equals': '=', 'notEqual': '!=',
+                }
                 having_conditions = []
+                having_counter = 0
                 for h in request.havingModel:
                     clean_field = "".join(c for c in h.field if c.isalnum() or c in '_')
                     agg = h.aggregation.upper()
-                    val = h.value
+                    op = having_ops.get(h.type)
+                    if agg not in allowed_aggs or op is None:
+                        continue  # scarta condizioni non valide invece di interpolarle
 
-                    # Build aggregation expression
-                    if agg == 'COUNT':
-                        agg_expr = f"COUNT(*)"
-                    else:
-                        agg_expr = f"{agg}({clean_field})"
-
-                    # Build comparison
-                    if h.type == 'greaterThan':
-                        having_conditions.append(f"{agg_expr} > {val}")
-                    elif h.type == 'greaterThanOrEqual':
-                        having_conditions.append(f"{agg_expr} >= {val}")
-                    elif h.type == 'lessThan':
-                        having_conditions.append(f"{agg_expr} < {val}")
-                    elif h.type == 'lessThanOrEqual':
-                        having_conditions.append(f"{agg_expr} <= {val}")
-                    elif h.type == 'equals':
-                        having_conditions.append(f"{agg_expr} = {val}")
-                    elif h.type == 'notEqual':
-                        having_conditions.append(f"{agg_expr} != {val}")
+                    agg_expr = "COUNT(*)" if agg == 'COUNT' else f"{agg}({clean_field})"
+                    pname = f"hv{having_counter}"
+                    having_counter += 1
+                    having_conditions.append(f"{agg_expr} {op} :{pname}")
+                    filter_params[pname] = h.value
 
                 if having_conditions:
                     having_sql = "HAVING " + " AND ".join(having_conditions)
@@ -953,26 +956,6 @@ class QueryEngine:
         except Exception as e:
             logger.error(f"Pivot drill error: {e}")
             raise
-
-    @staticmethod
-    async def get_column_values(db_type: str, config: dict, base_query: str, column: str) -> List[Any]:
-        """Fetch distinct sorted values for a column (used for Pivot Headers)"""
-        try:
-             # Sanitization
-             clean_col = "".join(c for c in column if c.isalnum() or c in '_')
-             
-             query = f"SELECT DISTINCT {clean_col} FROM ({base_query}) AS base ORDER BY {clean_col}"
-             engine = get_engine(db_type, config)
-             with engine.connect() as conn:
-                 df = pl.read_database(query, connection=conn)
-             
-             # Handle potential None/Null values
-             values = df[clean_col].to_list()
-             return [v for v in values if v is not None]
-             
-        except Exception as e:
-            logger.error(f"Get values error: {e}")
-            return []
 
     @staticmethod
     def hash_config(config: dict) -> str:

@@ -16,7 +16,10 @@ from pydantic import BaseModel
 from app.db.database import get_db, Report, Connection
 from app.core.deps import get_current_user
 from app.core.security import decrypt_password
-from app.services.query_engine import QueryEngine, _build_safe_filter_clause
+from app.services.query_engine import QueryEngine, _build_safe_filter_clause, _sanitize_column_name
+from app.services.report_source import resolve_report_source
+from app.services.rls import get_rls_filters, merge_rls
+from app.core.limits import clamp_rows
 from app.core.engine_pool import get_engine
 from app.services.cache import cache
 
@@ -81,14 +84,19 @@ async def execute_pivot(
         raise HTTPException(status_code=404, detail="Report not found")
     
     report, connection = row
-    
+
+    # RLS: filtri obbligatori per utente/ruolo (il superuser non ha restrizioni).
+    # Inclusi anche nella cache key -> isolamento dei risultati per utente.
+    rls_filters = await get_rls_filters(db, user, report_id)
+    effective_filters = merge_rls(request.filters, rls_filters)
+
     # Build config hash for caching
     config = {
         "query": report.query,
         "group_by": request.group_by,
         "split_by": request.split_by,
         "metrics": [m.model_dump() for m in request.metrics],
-        "filters": request.filters,
+        "filters": effective_filters,
         "calculate_delta": request.calculate_delta
     }
     config_hash = QueryEngine.hash_config(config)
@@ -105,49 +113,39 @@ async def execute_pivot(
             logger.info(f"Pivot cache HIT for report {report_id} in {elapsed:.1f}ms")
     
     if not cache_hit:
-        # Build config and ensure pool is warm
-        config = {
-            "host": connection.host,
-            "port": connection.port,
-            "database": connection.database,
-            "username": connection.username,
-            "password": decrypt_password(connection.password_encrypted),
-            "ssl_enabled": connection.ssl_enabled
-        }
-
-        # Ensure pool is warm before query (eliminates cold start)
-        QueryEngine.ensure_pool_warm(connection.db_type, config)
+        # Risolvi sorgente: warehouse mart materializzato o connessione live
+        db_type, src_config, base_query = await resolve_report_source(db, report, connection)
 
         # Merge default metrics with request metrics
         metrics = [m.model_dump() for m in request.metrics]
         if not metrics and report.default_metrics:
             metrics = report.default_metrics
-        
+
         group_by = request.group_by or report.default_group_by or []
         split_by = request.split_by or []
 
         # Execute query with split_by support
         if split_by and len(split_by) > 0:
             arrow_bytes, row_count = await execute_pivot_with_split(
-                connection.db_type,
-                config,
-                report.query,
+                db_type,
+                src_config,
+                base_query,
                 group_by,
                 split_by,
                 metrics,
-                request.filters,
+                effective_filters,
                 request.calculate_delta,
                 request.limit  # Pass limit for preview mode
             )
         else:
             # Standard pivot without split
             arrow_bytes, row_count, query_time = await QueryEngine.execute_pivot(
-                connection.db_type,
-                config,
-                report.query,
+                db_type,
+                src_config,
+                base_query,
                 group_by,
                 metrics,
-                request.filters,
+                effective_filters,
                 request.limit  # Pass limit for preview mode
             )
         
@@ -214,7 +212,8 @@ async def execute_pivot_with_split(
     select_parts = []
 
     # Group by columns (split_by is already a list, don't wrap it again!)
-    all_groups = group_by + split_by
+    # Identificatori sanitizzati per prevenire injection via nome colonna
+    all_groups = [_sanitize_column_name(c) for c in (group_by + split_by)]
     for col in all_groups:
         if is_mssql:
             select_parts.append(f'[{col}]')
@@ -226,17 +225,19 @@ async def execute_pivot_with_split(
     for m in metrics:
         agg = m.get('aggregation', 'SUM').upper()
         field = m.get('field', '')
-        name = m.get('name', field)
+        name = _sanitize_column_name(m.get('name', field) or field)
 
         if field and agg in ['SUM', 'AVG', 'COUNT', 'MIN', 'MAX']:
             metric_names.append(name)
             # FIX: Handle COUNT(*) correctly without quoting *
             if field == '*':
                 select_parts.append(f'{agg}(*) AS [{name}]' if is_mssql else f'{agg}(*) AS "{name}"')
-            elif is_mssql:
-                select_parts.append(f'{agg}([{field}]) AS [{name}]')
             else:
-                select_parts.append(f'{agg}("{field}") AS "{name}"')
+                clean_field = _sanitize_column_name(field)
+                if is_mssql:
+                    select_parts.append(f'{agg}([{clean_field}]) AS [{name}]')
+                else:
+                    select_parts.append(f'{agg}("{clean_field}") AS "{name}"')
 
     # Log what we're using
     logger.info(f"📊 Metrics for pivot: {metric_names}")
@@ -250,8 +251,8 @@ async def execute_pivot_with_split(
     # Build WHERE clause using parameterized queries (SQL injection safe)
     where_sql, filter_params = _build_safe_filter_clause(filters, is_mssql)
 
-    # Final SQL with safe limit handling
-    safe_limit = int(limit) if limit else None
+    # Final SQL with safe limit handling (cost guard: cap configurabile MAX_ROWS_PREVIEW)
+    safe_limit = clamp_rows(limit)
     if safe_limit and is_mssql:
         sql = f"SELECT TOP {safe_limit} {', '.join(select_parts)} FROM ({base_query}) AS base_data {where_sql} GROUP BY {group_clause}"
     elif safe_limit:
@@ -337,39 +338,6 @@ async def execute_pivot_with_split(
         # No split_by: just return aggregated data
         result_df = df
     
-    # Calculate Delta columns if requested
-    # DISABLED: User doesn't need Delta functionality (causes arithmetic errors on mixed types)
-    if False and calculate_delta and split_by:
-        # Get the split_by column values (e.g., years)
-        split_values = sorted([c for c in result_df.columns if c not in group_by])
-        
-        # If we have at least 2 periods, calculate delta
-        if len(split_values) >= 2:
-            # Get last two periods for comparison
-            period_cols = [c for c in split_values if c not in group_by]
-            if len(period_cols) >= 2:
-                # Sort to get chronological order
-                period_cols_sorted = sorted(period_cols, key=lambda x: str(x))
-                prev_period = period_cols_sorted[-2]
-                curr_period = period_cols_sorted[-1]
-                
-                # Calculate Delta (absolute difference)
-                delta_col = f"Delta ({curr_period} - {prev_period})"
-                result_df = result_df.with_columns([
-                    (pl.col(str(curr_period)).fill_null(0) - pl.col(str(prev_period)).fill_null(0)).alias(delta_col)
-                ])
-                
-                # Calculate Delta % (percentage change)
-                delta_pct_col = "Delta %"
-                result_df = result_df.with_columns([
-                    pl.when(pl.col(str(prev_period)) != 0)
-                    .then(
-                        ((pl.col(str(curr_period)).fill_null(0) - pl.col(str(prev_period)).fill_null(0)) 
-                         / pl.col(str(prev_period)).abs() * 100).round(2)
-                    )
-                    .otherwise(0)
-                    .alias(delta_pct_col)
-                ])
 
     # Clean up: Remove __row_index__ if it exists (used for pivoting without group_by)
     if "__row_index__" in result_df.columns:
@@ -407,27 +375,17 @@ async def get_pivot_schema(
     report, connection = row
     
     try:
-        config = {
-            "host": connection.host,
-            "port": connection.port,
-            "database": connection.database,
-            "username": connection.username,
-            "password": decrypt_password(connection.password_encrypted),
-            "ssl_enabled": connection.ssl_enabled
-        }
-
-        # Ensure pool is warm before query (eliminates cold start)
-        QueryEngine.ensure_pool_warm(connection.db_type, config)
+        db_type, config, base_query = await resolve_report_source(db, report, connection)
 
         # Get just 1 row to infer schema
-        if connection.db_type == "mssql":
-            limit_query = f"SELECT TOP 1 * FROM ({report.query}) AS schema_query"
+        if db_type == "mssql":
+            limit_query = f"SELECT TOP 1 * FROM ({base_query}) AS schema_query"
         else:
-            limit_query = f"SELECT * FROM ({report.query}) AS schema_query LIMIT 1"
-        
+            limit_query = f"SELECT * FROM ({base_query}) AS schema_query LIMIT 1"
+
         logger.info(f"Executing schema query for report {report_id}")
-        
-        arrow_table = QueryEngine._execute_query_sync(connection.db_type, config, limit_query)
+
+        arrow_table = QueryEngine._execute_query_sync(db_type, config, limit_query)
         
         columns = []
         for field in arrow_table.schema:
@@ -452,7 +410,7 @@ async def get_pivot_schema(
             "available_metrics": report.available_metrics or []
         }
     except Exception as e:
-        logger.error(f"Schema error for report {report_id}: {str(e)}")
+        logger.exception(f"Schema error for report {report_id}")
         raise HTTPException(
             status_code=500,
             detail=f"Errore nel caricamento dello schema: {str(e)}"
@@ -498,60 +456,52 @@ async def get_distinct_values(
         raise HTTPException(status_code=400, detail="Invalid column name")
 
     try:
-        config = {
-            "host": connection.host,
-            "port": connection.port,
-            "database": connection.database,
-            "username": connection.username,
-            "password": decrypt_password(connection.password_encrypted),
-            "ssl_enabled": connection.ssl_enabled
-        }
+        db_type, config, base_query = await resolve_report_source(db, report, connection)
 
-        # Build distinct query with optional search filter
-        base_query = report.query
+        # Build distinct query (search value SEMPRE come bound param — SQL injection safe)
+        safe_limit = int(limit)
+        is_mssql = db_type == "mssql"
+        col_ref = f"[{column}]" if is_mssql else f'"{column}"'
+        params: dict = {}
+
+        # RLS: restringe i valori distinti visibili (parametrizzato). Superuser bypassa.
+        rls = await get_rls_filters(db, user, report_id)
+        rls_where, rls_params = _build_safe_filter_clause(rls, is_mssql)
+        rls_cond = ""
+        if rls_where:
+            rls_cond = "AND " + rls_where[len("WHERE "):]
+            params.update(rls_params)
 
         if search:
-            # Sanitize search term
-            search_safe = search.replace("'", "''")
-            if connection.db_type == "mssql":
-                distinct_query = f"""
-                    SELECT DISTINCT TOP {limit} [{column}] as value
-                    FROM ({base_query}) AS base
-                    WHERE [{column}] IS NOT NULL
-                      AND CAST([{column}] AS NVARCHAR(MAX)) LIKE '%{search_safe}%'
-                    ORDER BY [{column}]
-                """
-            else:
-                distinct_query = f"""
-                    SELECT DISTINCT {column} as value
-                    FROM ({base_query}) AS base
-                    WHERE {column} IS NOT NULL
-                      AND CAST({column} AS TEXT) ILIKE '%{search_safe}%'
-                    ORDER BY {column}
-                    LIMIT {limit}
-                """
+            params["search"] = f"%{search}%"
+            like_op = "LIKE" if is_mssql else "ILIKE"
+            cast_type = "NVARCHAR(MAX)" if is_mssql else "TEXT"
+            search_cond = f"AND CAST({col_ref} AS {cast_type}) {like_op} :search"
         else:
-            if connection.db_type == "mssql":
-                distinct_query = f"""
-                    SELECT DISTINCT TOP {limit} [{column}] as value
-                    FROM ({base_query}) AS base
-                    WHERE [{column}] IS NOT NULL
-                    ORDER BY [{column}]
-                """
-            else:
-                distinct_query = f"""
-                    SELECT DISTINCT {column} as value
-                    FROM ({base_query}) AS base
-                    WHERE {column} IS NOT NULL
-                    ORDER BY {column}
-                    LIMIT {limit}
-                """
+            search_cond = ""
 
-        # Ensure pool is warm
-        QueryEngine.ensure_pool_warm(connection.db_type, config)
+        if is_mssql:
+            distinct_query = f"""
+                SELECT DISTINCT TOP {safe_limit} {col_ref} as value
+                FROM ({base_query}) AS base
+                WHERE {col_ref} IS NOT NULL
+                  {search_cond}
+                  {rls_cond}
+                ORDER BY {col_ref}
+            """
+        else:
+            distinct_query = f"""
+                SELECT DISTINCT {col_ref} as value
+                FROM ({base_query}) AS base
+                WHERE {col_ref} IS NOT NULL
+                  {search_cond}
+                  {rls_cond}
+                ORDER BY {col_ref}
+                LIMIT {safe_limit}
+            """
 
-        # Execute query
-        arrow_table = QueryEngine._execute_query_sync(connection.db_type, config, distinct_query)
+        # Execute query (parametrizzata). Il pool è già scaldato dal resolver per la sorgente live.
+        arrow_table = QueryEngine._execute_arrow_with_params_sync(db_type, config, distinct_query, params)
 
         # Convert to list of values
         values = arrow_table.column("value").to_pylist()
@@ -564,7 +514,7 @@ async def get_distinct_values(
         }
 
     except Exception as e:
-        logger.error(f"Distinct values error for report {report_id}, column {column}: {str(e)}")
+        logger.exception(f"Distinct values error for report {report_id}, column {column}")
         raise HTTPException(
             status_code=500,
             detail=f"Errore nel caricamento dei valori: {str(e)}"
@@ -616,7 +566,7 @@ async def save_pivot_config(
         return {"success": True, "message": "Configurazione salvata"}
 
     except Exception as e:
-        logger.error(f"Error saving pivot config: {str(e)}")
+        logger.exception("Error saving pivot config")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -651,7 +601,7 @@ async def load_pivot_config(
         return config
 
     except Exception as e:
-        logger.error(f"Error loading pivot config: {str(e)}")
+        logger.exception("Error loading pivot config")
         raise HTTPException(status_code=500, detail=str(e))
 
 

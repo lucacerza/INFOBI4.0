@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Save, Loader2, Play, CheckCircle, XCircle, AlertCircle, Settings, Eye } from 'lucide-react';
 import { logger } from '../utils/logger';
-import BiGrid from '../components/BiGrid';
+import { apiFetch } from '../services/apiClient';
 import BiGridConfig from '../components/BiGridConfig';
 import TreeDataGrid from '../components/TreeDataGrid';
 
@@ -75,8 +75,6 @@ export default function ReportEditorPage() {
     filters: []
   });
 
-  const getToken = () => localStorage.getItem('token');
-
   useEffect(() => {
     loadConnections();
     if (!isNew) loadReport();
@@ -84,9 +82,7 @@ export default function ReportEditorPage() {
 
   const loadConnections = async () => {
     try {
-      const res = await fetch('/api/connections', {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
+      const res = await apiFetch('/api/connections');
       const data = await res.json();
       setConnections(data);
       if (data.length > 0 && !form.connection_id) {
@@ -99,9 +95,7 @@ export default function ReportEditorPage() {
 
   const loadReport = async () => {
     try {
-      const res = await fetch(`/api/reports/${id}`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
+      const res = await apiFetch(`/api/reports/${id}`);
       const data = await res.json();
       setForm({
         name: data.name,
@@ -115,9 +109,7 @@ export default function ReportEditorPage() {
 
       // Load saved pivot config if exists
       try {
-        const configRes = await fetch(`/api/pivot/${id}/config`, {
-          headers: { 'Authorization': `Bearer ${getToken()}` }
-        });
+        const configRes = await apiFetch(`/api/pivot/${id}/config`);
         if (configRes.ok) {
           const savedConfig = await configRes.json();
           setPivotConfig(savedConfig);
@@ -140,12 +132,8 @@ export default function ReportEditorPage() {
     setTestResult(null);
 
     try {
-      const res = await fetch('/api/reports/test-query', {
+      const res = await apiFetch('/api/reports/test-query', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getToken()}`
-        },
         body: JSON.stringify({
           connection_id: form.connection_id,
           query: form.query
@@ -178,12 +166,8 @@ export default function ReportEditorPage() {
 
     setSaving(true);
     try {
-      const res = await fetch(isNew ? '/api/reports' : `/api/reports/${id}`, {
+      const res = await apiFetch(isNew ? '/api/reports' : `/api/reports/${id}`, {
         method: isNew ? 'POST' : 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getToken()}`
-        },
         body: JSON.stringify({
           ...form,
           default_group_by: [],
@@ -214,19 +198,15 @@ export default function ReportEditorPage() {
 
     // Load schema for pivot configuration
     try {
-      const schemaRes = await fetch(`/api/pivot/${id}/schema`, {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
+      const schemaRes = await apiFetch(`/api/pivot/${id}/schema`);
       if (!schemaRes.ok) throw new Error('Schema non disponibile');
       const schemaData = await schemaRes.json();
       setSchema(schemaData);
 
       // Try to load existing config
       try {
-          const configRes = await fetch(`/api/pivot/${id}/config`, {
-            headers: { 'Authorization': `Bearer ${getToken()}` }
-          });
-          
+          const configRes = await apiFetch(`/api/pivot/${id}/config`);
+
           if (configRes.ok) {
               const savedConfig = await configRes.json();
               if (savedConfig.rows?.length > 0 || savedConfig.columns?.length > 0 || savedConfig.values?.length > 0) {
@@ -272,12 +252,8 @@ export default function ReportEditorPage() {
     if (!id) return;
 
     try {
-      const res = await fetch(`/api/pivot/${id}/config`, {
+      const res = await apiFetch(`/api/pivot/${id}/config`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getToken()}`
-        },
         body: JSON.stringify(pivotConfig)
       });
 
@@ -297,15 +273,11 @@ export default function ReportEditorPage() {
 
     // Auto-save config before navigating
     try {
-      await fetch(`/api/pivot/${id}/config`, {
+      await apiFetch(`/api/pivot/${id}/config`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getToken()}`
-        },
         body: JSON.stringify(pivotConfig)
       });
-      
+
       // Navigate after successful save
       navigate(`/reports/${id}/pivot`);
     } catch (err) {
@@ -322,7 +294,7 @@ export default function ReportEditorPage() {
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
       </div>
     );
   }
@@ -330,18 +302,18 @@ export default function ReportEditorPage() {
   // PIVOT CONFIGURATION VIEW (with preview using LIMIT 100)
   if (showPivotConfig && schema && id) {
     return (
-      <div className="h-full flex flex-col bg-slate-50">
+      <div className="h-full flex flex-col bg-surface-2">
         {/* Header */}
-        <div className="bg-white border-b px-4 py-3 flex items-center justify-between flex-shrink-0">
+        <div className="bg-surface border-b px-4 py-3 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setShowPivotConfig(false)}
-              className="p-2 hover:bg-slate-100 rounded-lg"
+              className="p-2 hover:bg-ground rounded-lg"
             >
-              <ArrowLeft className="w-5 h-5 text-slate-600" />
+              <ArrowLeft className="w-5 h-5 text-muted" />
             </button>
             <div>
-              <h1 className="font-semibold text-slate-800">{form.name} - Configurazione Pivot</h1>
+              <h1 className="font-semibold text-ink">{form.name} - Configurazione Pivot</h1>
               <p className="text-xs text-amber-600 font-medium">
                 PREVIEW MODE: Mostrando solo 100 righe per configurazione veloce
               </p>
@@ -351,7 +323,7 @@ export default function ReportEditorPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={handleSavePivotConfig}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white transition"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-accent hover:bg-accent-strong text-white transition"
             >
               <Save className="w-4 h-4" />
               Salva Config
@@ -415,10 +387,10 @@ export default function ReportEditorPage() {
 
   // QUERY EDITOR VIEW (default)
   return (
-    <div className="h-full flex flex-col bg-slate-50">
-      <div className="bg-white border-b px-6 py-4">
+    <div className="h-full flex flex-col bg-surface-2">
+      <div className="bg-surface border-b px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center gap-4">
-          <Link to="/reports" className="p-2 hover:bg-slate-100 rounded-lg">
+          <Link to="/reports" className="p-2 hover:bg-ground rounded-lg">
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <h1 className="text-xl font-bold">{isNew ? 'Nuovo Report' : 'Modifica Report'}</h1>
@@ -428,7 +400,7 @@ export default function ReportEditorPage() {
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-4xl mx-auto space-y-6">
 
-          <div className="bg-white rounded-xl border p-6">
+          <div className="bg-surface rounded-xl border p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Nome *</label>
@@ -464,13 +436,13 @@ export default function ReportEditorPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border p-6">
+          <div className="bg-surface rounded-xl border p-6">
             <div className="flex justify-between mb-4">
               <h2 className="font-semibold">Query SQL</h2>
               <button
                 onClick={handleTestQuery}
                 disabled={testing || !form.query.trim()}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg disabled:bg-slate-300"
+                className="flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-lg disabled:bg-slate-300"
               >
                 {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                 Testa
@@ -480,7 +452,7 @@ export default function ReportEditorPage() {
             <textarea
               value={form.query}
               onChange={e => { setForm({ ...form, query: e.target.value }); setTestResult(null); }}
-              className="w-full h-64 px-4 py-3 font-mono text-sm border rounded-lg bg-slate-50"
+              className="w-full h-64 px-4 py-3 font-mono text-sm border rounded-lg bg-surface-2"
               placeholder={`SELECT
     rtrim(MVDESAGE) as Agente,
     CAST(DATEPART(year, mvDatDoc) AS VARCHAR) as Anno,
@@ -494,13 +466,13 @@ WHERE mvDatDoc >= '2023-01-01'`}
               <div className={`mt-4 p-4 rounded-lg flex items-start gap-3 ${
                 testResult.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
               } border`}>
-                {testResult.success ? <CheckCircle className="w-5 h-5 text-green-600" /> : <XCircle className="w-5 h-5 text-red-600" />}
+                {testResult.success ? <CheckCircle className="w-5 h-5 text-pos" /> : <XCircle className="w-5 h-5 text-neg" />}
                 <div>
                   <p className={testResult.success ? 'text-green-800' : 'text-red-800'}>{testResult.message}</p>
                   {testResult.columns && (
                     <div className="flex flex-wrap gap-1 mt-2">
                       {testResult.columns.map(col => (
-                        <span key={col} className="px-2 py-0.5 bg-white border rounded text-xs font-mono">{col}</span>
+                        <span key={col} className="px-2 py-0.5 bg-surface border rounded text-xs font-mono">{col}</span>
                       ))}
                     </div>
                   )}
@@ -514,7 +486,7 @@ WHERE mvDatDoc >= '2023-01-01'`}
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border p-6">
+          <div className="bg-surface rounded-xl border p-6">
             <div className="flex items-center gap-4">
               <label className="flex items-center gap-2">
                 <input
@@ -542,9 +514,9 @@ WHERE mvDatDoc >= '2023-01-01'`}
         </div>
       </div>
 
-      <div className="bg-white border-t px-6 py-4">
+      <div className="bg-surface border-t px-6 py-4">
         <div className="max-w-4xl mx-auto flex justify-between">
-          <Link to="/reports" className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">
+          <Link to="/reports" className="px-4 py-2 text-muted hover:bg-ground rounded-lg">
             Annulla
           </Link>
           <div className="flex gap-2">

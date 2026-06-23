@@ -9,6 +9,7 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, Search, X, Loader2 } from 'lucide-react';
+import { apiFetch } from '../../services/apiClient';
 
 interface DropdownSlicerProps {
   reportId: number;
@@ -33,8 +34,6 @@ export default function DropdownSlicer({
   const [error, setError] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const getToken = () => localStorage.getItem('token');
-
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -53,9 +52,7 @@ export default function DropdownSlicer({
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/pivot/${reportId}/distinct/${column}`, {
-          headers: { 'Authorization': `Bearer ${getToken()}` }
-        });
+        const res = await apiFetch(`/api/pivot/${reportId}/distinct/${column}`);
         if (res.ok) {
           const data = await res.json();
           const values = data.values.map((v: any) => String(v));
@@ -98,10 +95,10 @@ export default function DropdownSlicer({
   };
 
   return (
-    <div className="bg-white rounded-lg border shadow-sm" ref={dropdownRef}>
+    <div className="bg-surface rounded-lg border shadow-sm" ref={dropdownRef}>
       {/* Header */}
-      <div className="px-3 py-2 border-b bg-slate-50">
-        <h4 className="font-medium text-sm text-slate-700">
+      <div className="px-3 py-2 border-b bg-surface-2">
+        <h4 className="font-medium text-sm text-ink">
           {title || column}
         </h4>
       </div>
@@ -113,36 +110,36 @@ export default function DropdownSlicer({
             onClick={() => !loading && setIsOpen(!isOpen)}
             className={`flex-1 flex items-center justify-between px-3 py-2 text-sm border rounded-md cursor-pointer hover:border-slate-400 ${loading ? 'opacity-50' : ''}`}
           >
-            <span className={selectedValue ? 'text-slate-800' : 'text-slate-400'}>
+            <span className={selectedValue ? 'text-ink' : 'text-muted'}>
               {loading ? 'Caricamento...' : (selectedValue || 'Seleziona...')}
             </span>
-            <ChevronDown className={`w-4 h-4 text-slate-400 transition ${isOpen ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`w-4 h-4 text-muted transition ${isOpen ? 'rotate-180' : ''}`} />
           </div>
           {selectedValue && (
             <button
               type="button"
               onClick={clearSelection}
-              className="p-1.5 hover:bg-slate-100 rounded border"
+              className="p-1.5 hover:bg-ground rounded border"
               title="Rimuovi selezione"
             >
-              <X className="w-4 h-4 text-slate-400" />
+              <X className="w-4 h-4 text-muted" />
             </button>
           )}
         </div>
 
         {/* Dropdown Menu */}
         {isOpen && !loading && (
-          <div className="absolute left-2 right-2 z-50 mt-1 bg-white border rounded-md shadow-lg">
+          <div className="absolute left-2 right-2 z-50 mt-1 bg-surface border rounded-md shadow-lg">
             {/* Search in dropdown */}
             <div className="p-2 border-b">
               <div className="relative">
-                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
                 <input
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Cerca..."
-                  className="w-full pl-8 pr-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full pl-8 pr-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-1 focus:ring-accent"
                   autoFocus
                 />
               </div>
@@ -151,17 +148,17 @@ export default function DropdownSlicer({
             {/* Options */}
             <div className="max-h-48 overflow-auto">
               {error ? (
-                <div className="px-3 py-2 text-sm text-red-500">{error}</div>
+                <div className="px-3 py-2 text-sm text-neg">{error}</div>
               ) : filteredValues.length === 0 ? (
-                <div className="px-3 py-2 text-sm text-slate-400">Nessun risultato</div>
+                <div className="px-3 py-2 text-sm text-muted">Nessun risultato</div>
               ) : (
                 filteredValues.map((value) => (
                   <button
                     key={value}
                     type="button"
                     onClick={() => selectValue(value)}
-                    className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-100 ${
-                      selectedValue === value ? 'bg-blue-50 text-blue-700' : 'text-slate-700'
+                    className={`w-full text-left px-3 py-2 text-sm hover:bg-ground ${
+                      selectedValue === value ? 'bg-accent-soft text-accent-strong' : 'text-ink'
                     }`}
                   >
                     {value || '(vuoto)'}

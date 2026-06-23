@@ -6,11 +6,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
 from pydantic import BaseModel
-from app.db.database import get_db, Report, Connection
+from app.db.database import get_db, Report, Connection, ReportVersion
 from app.core.deps import get_current_user, get_current_admin, get_current_superuser
 from app.core.security import decrypt_password
 from app.models.schemas import ReportCreate, ReportUpdate, ReportResponse, GridRequest, PivotDrillRequest
 from app.services.query_engine import QueryEngine, query_engine
+from app.services.report_source import resolve_report_source
+from app.services.rls import get_rls_filters, apply_rls_to_filtermodel
+from app.services.sql_validation import validate_select_query
+from app.services.report_versions import save_version, apply_snapshot
 from app.services.cache import cache
 
 logger = logging.getLogger(__name__)
@@ -63,8 +67,9 @@ async def test_query(
             "columns": [field.name for field in arrow_table.schema],
             "message": "Query eseguita con successo"
         }
-        
+
     except Exception as e:
+        logger.exception("Test query failed")
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("", response_model=List[ReportResponse])
@@ -83,6 +88,12 @@ async def create_report(
     user = Depends(get_current_superuser)  # SECURITY: Solo superuser può creare report
 ):
     """Create a new report (SUPERUSER ONLY)"""
+    # Validazione query (solo SELECT/CTE di sola lettura) — prima di tutto
+    try:
+        validate_select_query(data.query)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     # Verify connection exists
     conn_result = await db.execute(select(Connection).where(Connection.id == data.connection_id))
     if not conn_result.scalar_one_or_none():
@@ -131,7 +142,17 @@ async def update_report(
     report = result.scalar_one_or_none()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
-    
+
+    # Se la query viene aggiornata, validala (solo SELECT/CTE)
+    if data.query is not None:
+        try:
+            validate_select_query(data.query)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    # Versioning: salva lo stato corrente PRIMA di applicare le modifiche
+    await save_version(db, report, user.id)
+
     for field, value in data.model_dump(exclude_unset=True).items():
         if field == "default_metrics" and value:
             value = [m.model_dump() if hasattr(m, 'model_dump') else m for m in value]
@@ -162,9 +183,64 @@ async def delete_report(
     
     await db.delete(report)
     await db.commit()
-    
+
     # Invalidate cache
     await cache.invalidate_report(report_id)
+
+
+@router.get("/{report_id}/versions")
+async def list_report_versions(
+    report_id: int,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_superuser),
+):
+    """Storico delle versioni della definizione del report (SUPERUSER ONLY)."""
+    rows = (await db.execute(
+        select(ReportVersion)
+        .where(ReportVersion.report_id == report_id)
+        .order_by(ReportVersion.version_no.desc())
+    )).scalars().all()
+    return [
+        {
+            "id": r.id,
+            "version_no": r.version_no,
+            "snapshot": r.snapshot,
+            "created_by": r.created_by,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
+
+
+@router.post("/{report_id}/versions/{version_id}/restore", response_model=ReportResponse)
+async def restore_report_version(
+    report_id: int,
+    version_id: int,
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_superuser),
+):
+    """Ripristina una versione precedente (versiona prima lo stato corrente). SUPERUSER ONLY."""
+    report = (await db.execute(select(Report).where(Report.id == report_id))).scalar_one_or_none()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    version = (await db.execute(
+        select(ReportVersion).where(
+            ReportVersion.id == version_id,
+            ReportVersion.report_id == report_id,
+        )
+    )).scalar_one_or_none()
+    if not version:
+        raise HTTPException(status_code=404, detail="Versione non trovata")
+
+    # Versiona lo stato corrente, poi applica lo snapshot scelto (ripristino annullabile)
+    await save_version(db, report, user.id)
+    apply_snapshot(report, version.snapshot)
+    await db.commit()
+    await db.refresh(report)
+    await cache.invalidate_report(report_id)
+    return report
+
 
 @router.put("/{report_id}/layout")
 async def save_layout(
@@ -348,40 +424,31 @@ async def execute_grid_query(
     if not report:
         raise HTTPException(status_code=404, detail='Report not found')
 
-    # 2. Fetch Connection
-    conn_result = await db.execute(select(Connection).where(Connection.id == report.connection_id))
-    connection = conn_result.scalar_one_or_none()
-    if not connection:
-        raise HTTPException(status_code=400, detail='Connection not found')
-    
-    # 3. Execute
+    # 2. Risolvi sorgente (warehouse mart o connessione live) ed esegui
     try:
-        config = {
-            'host': connection.host,
-            'port': connection.port,
-            'database': connection.database,
-            'username': connection.username,
-            'password': decrypt_password(connection.password_encrypted),
-            'ssl_enabled': connection.ssl_enabled
-        }
+        db_type, config, base_query = await resolve_report_source(db, report)
 
-        # Ensure pool is warm before query (eliminates cold start)
-        QueryEngine.ensure_pool_warm(connection.db_type, config)
+        # RLS: inietta i filtri obbligatori nel filterModel (superuser bypassa)
+        rls = await get_rls_filters(db, user, report_id)
+        request.filterModel = apply_rls_to_filtermodel(request.filterModel, rls)
 
         rows, total, elapsed = await query_engine.execute_grid_query(
-            connection.db_type,
+            db_type,
             config,
-            report.query,  # Base query
+            base_query,
             request
         )
-        
+
         return {
             'rows': rows,
             'lastRow': total,
             'elapsed_ms': elapsed
         }
-        
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        logger.exception(f"Grid query failed for report {report_id}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post('/{report_id}/pivot-drill')
@@ -400,42 +467,32 @@ async def execute_pivot_drill(
     if not report:
         raise HTTPException(status_code=404, detail='Report not found')
 
-    # 2. Fetch Connection
-    conn_result = await db.execute(select(Connection).where(Connection.id == report.connection_id))
-    connection = conn_result.scalar_one_or_none()
-    if not connection:
-        raise HTTPException(status_code=400, detail='Connection not found')
-    
-    # 3. Execute
+    # 2. Risolvi sorgente (warehouse mart o connessione live) ed esegui
     try:
-        config = {
-            'host': connection.host,
-            'port': connection.port,
-            'database': connection.database,
-            'username': connection.username,
-            'password': decrypt_password(connection.password_encrypted),
-            'ssl_enabled': connection.ssl_enabled
-        }
+        db_type, config, base_query = await resolve_report_source(db, report)
 
-        # Ensure pool is warm before query (eliminates cold start)
-        QueryEngine.ensure_pool_warm(connection.db_type, config)
+        # RLS: inietta i filtri obbligatori nel filterModel (superuser bypassa)
+        rls = await get_rls_filters(db, user, report_id)
+        request.filterModel = apply_rls_to_filtermodel(request.filterModel, rls)
 
         rows, total, elapsed_query = await query_engine.execute_pivot_drill(
-            connection.db_type,
+            db_type,
             config,
-            report.query,  # Base query
+            base_query,
             request
         )
-        
+
         total_time = (time.perf_counter() - start_total) * 1000
         logger.info(f"⚡ PIVOT DRILL Report {report_id}: {total} rows. Query={elapsed_query:.1f}ms, Total={total_time:.1f}ms")
-        
+
         return {
             'rows': rows,
             'count': total,
             'elapsed_ms': elapsed_query
         }
-        
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"❌ PIVOT DRILL Error Report {report_id}: {e}")
+        logger.exception(f"PIVOT DRILL Error Report {report_id}")
         raise HTTPException(status_code=500, detail=str(e))

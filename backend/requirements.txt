@@ -40,5 +40,5 @@ python-dotenv==1.0.0
 httpx==0.26.0
 orjson==3.9.12
 
-# DuckDB for high-performance import mode
-duckdb==0.9.2
+# Datawarehouse: engine colonnare embedded (file singolo, rigenerabile)
+duckdb>=1.1

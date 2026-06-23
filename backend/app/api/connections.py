@@ -8,6 +8,7 @@ from sqlalchemy import select, text
 from typing import List
 from pydantic import BaseModel
 from app.db.database import get_db, Connection
+from app.core.config import settings
 from app.core.deps import get_current_user, get_current_admin, get_current_superuser
 from app.core.security import encrypt_password, decrypt_password
 from app.models.schemas import ConnectionCreate, ConnectionUpdate, ConnectionResponse
@@ -55,8 +56,8 @@ def _format_connection_error(e: Exception, host: str, database: str) -> str:
         # Rileva IP interni di Docker Desktop (spesso mappati sull'host)
         if resolved_ip.startswith("192.168.65.") or resolved_ip == "127.0.0.1" or resolved_ip.startswith("172."):
              ip_info += " [⚠️ È IL TUO PC LOCALE!]"
-    except:
-        ip_info = " (Docker non riesce a risolvere questo nome)"
+    except Exception:
+        ip_info = " (impossibile risolvere questo nome host)"
 
     error_msg = str(e)
     if "Login failed" in error_msg or "Login non riuscito" in error_msg or "18456" in error_msg:
@@ -127,7 +128,7 @@ async def test_new_connection(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Connection test failed: {e}")
+        logger.exception("Connection test failed (new connection)")
         error_msg = _format_connection_error(e, request.host, request.database)
         raise HTTPException(status_code=400, detail=error_msg)
 
@@ -282,6 +283,7 @@ async def test_connection(
     except asyncio.TimeoutError:
         return {"success": False, "message": "Timeout: connessione troppo lenta"}
     except Exception as e:
+        logger.exception(f"Connection test failed for connection {conn.id}")
         msg = _format_connection_error(e, conn.host, conn.database)
         return {"success": False, "message": msg}
 

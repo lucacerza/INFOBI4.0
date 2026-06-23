@@ -73,25 +73,3 @@ async def get_current_admin(user: User = Depends(get_current_user)) -> User:
             detail="Admin access required"
         )
     return user
-
-
-async def get_current_admin_or_superuser(user: User = Depends(get_current_user)) -> User:
-    """Alias for get_current_admin (accepts both admin and superuser)"""
-    return await get_current_admin(user)
-
-
-# Aliases for clarity
-require_superuser = get_current_superuser
-require_admin = get_current_admin
-
-
-def require_role(*roles: str):
-    """Factory for role-based access"""
-    async def check_role(user: User = Depends(get_current_user)) -> User:
-        if user.role not in roles:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Required role: {', '.join(roles)}"
-            )
-        return user
-    return check_role

@@ -1,4 +1,4 @@
-# INFOBI 4.0 - Business Intelligence Platform
+# INFOBI Pulse - Business Intelligence Platform
 
 Sistema di Business Intelligence self-hosted per analisi dati con pivot table avanzate, dashboard interattive e supporto multi-database.
 
@@ -71,7 +71,7 @@ docker-compose up -d
 
 ### Pivot Table (BiGrid)
 
-La funzionalità principale di INFOBI 4.0 è il pivot table avanzato con:
+La funzionalità principale di INFOBI Pulse è il pivot table avanzato con:
 
 #### Sezioni Configurazione (Drag & Drop)
 

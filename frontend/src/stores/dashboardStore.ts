@@ -16,6 +16,18 @@ export interface FilterValue {
   sourceField?: string; // Campo originale (es. groupBy[0])
 }
 
+/**
+ * Accessor UNICO per ottenere i valori selezionati di un filtro.
+ * Gestisce in modo coerente sia il single-value (`value`) sia il multi-value (`values`),
+ * evitando la doppia rappresentazione (value/values vs filter/values) che causava
+ * i bug di selezione degli slicer.
+ */
+export function selectedValuesOf(f?: FilterValue): any[] {
+  if (!f) return [];
+  if (Array.isArray(f.values)) return f.values;
+  return f.value !== undefined && f.value !== null ? [f.value] : [];
+}
+
 interface DashboardState {
   // Filtri attivi per report: reportId -> campo -> valore
   filtersByReport: Record<number, Record<string, FilterValue>>;
@@ -35,6 +47,9 @@ interface DashboardState {
 
   // Helper per convertire filtri in formato API (filterModel)
   getFilterModelForReport: (reportId: number) => Record<string, any>;
+
+  // Accessor UNICO per i valori selezionati di un filtro (single o multi)
+  getSelectedValues: (reportId: number, column: string) => any[];
 }
 
 export const useDashboardStore = create<DashboardState>((set, get) => ({
@@ -93,6 +108,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
   getFiltersForReport: (reportId) => {
     return get().filtersByReport[reportId] || {};
+  },
+
+  getSelectedValues: (reportId, column) => {
+    return selectedValuesOf(get().filtersByReport[reportId]?.[column]);
   },
 
   getFilterModelForReport: (reportId) => {
