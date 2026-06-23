@@ -96,6 +96,85 @@ def test_incremental_dataset_refresh(client, auth_headers, tmp_path, monkeypatch
     assert body["last_watermark"] == "5"
 
 
+def _exec(db_path, sql):
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(sql)
+    conn.commit()
+    conn.close()
+
+
+def test_incremental_merge_on_key(tmp_path, monkeypatch):
+    """Con key_columns, un update non duplica la riga: la sostituisce (upsert)."""
+    import polars as pl
+    monkeypatch.setattr(settings, "WAREHOUSE_DIR", str(tmp_path / "wh"))
+
+    src = tmp_path / "m.db"
+    conn = sqlite3.connect(str(src))
+    conn.execute("CREATE TABLE vendite (id INTEGER, val REAL, updated INTEGER)")
+    conn.executemany("INSERT INTO vendite VALUES (?,?,?)", [(1, 10.0, 1), (2, 20.0, 2), (3, 30.0, 3)])
+    conn.commit()
+    conn.close()
+
+    cfg = {"database": str(src)}
+    q = "SELECT id, val, updated FROM vendite"
+
+    r1 = warehouse.materialize_incremental("mart_merge", "sqlite", cfg, q, "updated", None, ["id"])
+    assert r1["total_rows"] == 3 and r1["watermark"] == "3"
+
+    # update della riga id=2 (val + watermark) e nuova riga id=4
+    _exec(src, "UPDATE vendite SET val = 999, updated = 4 WHERE id = 2")
+    _exec(src, "INSERT INTO vendite VALUES (4, 40.0, 5)")
+
+    r2 = warehouse.materialize_incremental("mart_merge", "sqlite", cfg, q, "updated", r1["watermark"], ["id"])
+    assert r2["mode"] == "merge"
+    assert r2["rows_added"] == 2          # 1 update + 1 insert estratti
+    assert r2["total_rows"] == 4          # NON 5: id=2 sostituita, non duplicata
+    assert r2["watermark"] == "5"
+
+    # la riga id=2 è aggiornata e unica
+    out = pl.from_arrow(warehouse.query_arrow('SELECT val FROM "mart_merge" WHERE id = 2'))
+    assert out["val"].to_list() == [999.0]
+
+
+def test_incremental_merge_e2e(client, auth_headers, tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "WAREHOUSE_DIR", str(tmp_path / "wh"))
+    src = tmp_path / "me.db"
+    conn = sqlite3.connect(str(src))
+    conn.execute("CREATE TABLE vendite (id INTEGER, regione TEXT, fatturato REAL, updated INTEGER)")
+    conn.executemany("INSERT INTO vendite VALUES (?,?,?,?)",
+                     [(1, "Nord", 100.0, 1), (2, "Sud", 50.0, 2)])
+    conn.commit()
+    conn.close()
+
+    cid = client.post("/api/connections", headers=auth_headers, json={
+        "name": "src-merge", "db_type": "sqlite", "host": "localhost", "port": 0,
+        "database": str(src), "username": "x", "password": "x",
+    }).json()["id"]
+    rid = client.post("/api/reports", headers=auth_headers, json={
+        "name": "Vendite merge", "connection_id": cid,
+        "query": "SELECT id, regione, fatturato, updated FROM vendite",
+    }).json()["id"]
+
+    created = client.post("/api/warehouse/from-report", headers=auth_headers, json={
+        "report_id": rid, "sync_mode": "incremental",
+        "watermark_column": "updated", "key_columns": ["id"],
+    })
+    assert created.status_code == 201, created.text
+    ds = created.json()
+    assert ds["row_count"] == 2
+
+    # update id=1 + nuova id=3
+    _exec(src, "UPDATE vendite SET fatturato = 100000, updated = 3 WHERE id = 1")
+    conn = sqlite3.connect(str(src))
+    conn.execute("INSERT INTO vendite VALUES (3, 'Est', 70.0, 4)")
+    conn.commit()
+    conn.close()
+
+    refreshed = client.post(f"/api/warehouse/{ds['id']}/refresh", headers=auth_headers).json()
+    assert refreshed["row_count"] == 3        # update non duplica: 2 + 1 nuova
+    assert refreshed["last_watermark"] == "4"
+
+
 def test_incremental_requires_watermark(client, auth_headers, tmp_path):
     # creo al volo un report qualsiasi
     src = tmp_path / "w.db"

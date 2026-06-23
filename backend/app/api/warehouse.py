@@ -81,7 +81,7 @@ async def _materialize(db: AsyncSession, ds: WarehouseDataset) -> WarehouseDatas
             result = await run_in_threadpool(
                 warehouse.materialize_incremental,
                 ds.table_name, connection.db_type, config, ds.source_query,
-                ds.watermark_column, ds.last_watermark,
+                ds.watermark_column, ds.last_watermark, ds.key_columns or [],
             )
             ds.row_count = result["total_rows"]
             ds.columns = result["columns"]

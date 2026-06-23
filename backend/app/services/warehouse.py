@@ -84,6 +84,31 @@ def _append_df(table_name: str, df: pl.DataFrame) -> int:
         con.close()
 
 
+def _merge_df(table_name: str, df: pl.DataFrame, key_columns: List[str]) -> int:
+    """
+    Upsert idempotente sulla chiave: elimina dal mart le righe con le chiavi in
+    arrivo, poi inserisce le nuove. Gestisce sia insert sia update. Ritorna il totale.
+    """
+    table = sanitize_table(table_name)
+    keys = [_sanitize_column_name(k) for k in key_columns if k]
+    if not keys:
+        return _append_df(table_name, df)
+
+    key_list = ", ".join(f'"{k}"' for k in keys)
+    # row-value IN per chiavi composite; singola colonna senza parentesi
+    lhs = f"({key_list})" if len(keys) > 1 else f'"{keys[0]}"'
+
+    con = duckdb.connect(str(warehouse_path()))
+    try:
+        con.register("incoming", df.to_arrow())
+        con.execute(f'DELETE FROM "{table}" WHERE {lhs} IN (SELECT {key_list} FROM incoming)')
+        con.execute(f'INSERT INTO "{table}" SELECT * FROM incoming')
+        con.unregister("incoming")
+        return int(con.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0])
+    finally:
+        con.close()
+
+
 def _coerce(value: Optional[str]) -> Any:
     """Ricoercizza il watermark salvato (stringa) al tipo plausibile per il confronto SQL."""
     if value is None:
@@ -105,11 +130,13 @@ def materialize_incremental(
     query: str,
     watermark_column: str,
     last_watermark: Optional[str],
+    key_columns: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
-    Carico incrementale (append) basato su watermark.
+    Carico incrementale basato su watermark.
     - Primo carico (o tabella assente): full create + watermark iniziale.
-    - Carichi successivi: estrae solo `watermark_column > last_watermark` e appende.
+    - Carichi successivi: estrae solo `watermark_column > last_watermark` e
+      o appende (append-only) o fa merge/upsert su `key_columns` (gestisce gli update).
     Ritorna {rows_added, total_rows, watermark, columns, mode}.
     """
     wm_col = _sanitize_column_name(watermark_column)
@@ -126,9 +153,16 @@ def materialize_incremental(
         delta_sql = f'{base} WHERE "{wm_col}" > :wm'
         df = QueryEngine._execute_df_with_params_sync(db_type, config, delta_sql, {"wm": _coerce(last_watermark)})
         rows_added = df.height
-        total = _append_df(table_name, df) if rows_added else _count(table_name)
         columns = columns_of(df)
-        mode = "append"
+        if not rows_added:
+            total = _count(table_name)
+            mode = "noop"
+        elif key_columns:
+            total = _merge_df(table_name, df, key_columns)
+            mode = "merge"
+        else:
+            total = _append_df(table_name, df)
+            mode = "append"
 
     # avanza il watermark al massimo tra le righe appena caricate
     new_watermark = last_watermark

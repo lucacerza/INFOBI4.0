@@ -72,7 +72,7 @@
 - [ ] DuckDB + Parquet, architettura medallion (bronze/silver/gold)
 - [~] ETL incrementale schedulato (APScheduler, watermark `updated_at`)
   - [x] **Step 1 — carico incrementale (append) con watermark**: campi `WarehouseDataset` (sync_mode/watermark_column/last_watermark/key_columns); `warehouse.materialize_incremental` (primo carico full → poi `WHERE wm > last_watermark` + append, avanza il watermark); `refresh`/`from-report` rispettano `sync_mode` (validazione: incrementale richiede watermark_column). Test `test_warehouse_incremental.py` (3).
-  - [ ] Step 2 — merge/upsert su `key_columns` (gestione update, non solo insert)
+  - [x] **Step 2 — merge/upsert su `key_columns`**: `_merge_df` (DELETE chiavi in arrivo + INSERT, idempotente; chiavi singole o composite via row-value IN); `materialize_incremental` fa merge se `key_columns` è valorizzato, altrimenti append; modo `noop` se nessuna riga nuova. Test (+2): update non duplica la riga (service + e2e).
   - [ ] Step 3 — scheduling automatico del refresh (APScheduler) + UI config
 - [ ] Semantic layer (misure/dimensioni riusabili)
 - [x] **Step B — Report "warehouse-backed"**: flag `Report.warehouse_backed`; resolver unico `services/report_source.py` che sceglie warehouse-mart vs sorgente live (fallback automatico se il mart non è pronto); routing applicato a tutti gli endpoint dati (grid, pivot-drill, pivot+split, schema, distinct) **senza toccare il motore pivot** (DuckDB = dialetto PostgreSQL: `"col"`, ROLLUP, LIMIT/OFFSET, `:param` via duckdb_engine); DuckDB integrato in `engine_pool` (NullPool); UI: pannello Warehouse nel ReportViewer (superuser) per materializzare/aggiornare e attivare le query sul warehouse. Test: `test_warehouse_backed.py` (2 e2e, verifica snapshot + fallback).
