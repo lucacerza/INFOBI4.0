@@ -16,7 +16,7 @@ import TreeDataGrid from '../components/TreeDataGrid';
 import BiGridConfig from '../components/BiGridConfig';
 import {
   ArrowLeft, Download, Settings, Loader2,
-  ChevronRight, Save, LayoutGrid, Edit, Sparkles, Lightbulb, X, ThumbsUp, ThumbsDown, AlertTriangle
+  ChevronRight, Save, LayoutGrid, Edit, Sparkles, Lightbulb, X, ThumbsUp, ThumbsDown, AlertTriangle, TrendingUp
 } from 'lucide-react';
 
 interface ColumnInfo {
@@ -69,6 +69,7 @@ export default function ReportPivotPage() {
   const [aiLogId, setAiLogId] = useState<number | null>(null);
   const [feedbackGiven, setFeedbackGiven] = useState(false);
   const [anomBusy, setAnomBusy] = useState(false);
+  const [fcBusy, setFcBusy] = useState(false);
 
   // Load report and schema
   useEffect(() => {
@@ -234,6 +235,38 @@ export default function ReportPivotPage() {
     }
   };
 
+  // Previsione lineare: usa la prima dimensione (asse tempo) e la prima misura
+  const handleForecast = async () => {
+    if (!pivotConfig.rows.length || !pivotConfig.values.length) {
+      setAiMsg({ type: 'error', text: 'Servono una dimensione temporale (riga) e una misura' });
+      return;
+    }
+    setFcBusy(true);
+    setInsight(null);
+    try {
+      const m = pivotConfig.values[0];
+      const res = await apiFetch(`/api/ai/reports/${reportId}/forecast`, {
+        method: 'POST',
+        body: JSON.stringify({
+          time_field: pivotConfig.rows[0],
+          metric: { field: m.field, aggregation: m.aggregation, name: m.name },
+          periods: 3,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Errore');
+      const arrow = data.trend === 'up' ? '↑' : data.trend === 'down' ? '↓' : '→';
+      const lines = data.forecast
+        .map((p: any) => `• ${p.label}: ${p.value} (intervallo ${p.lower}–${p.upper})`)
+        .join('\n');
+      setInsight(`Previsione «${data.metric}» su ${data.time} ${arrow} (trend ${data.trend}):\n${lines}`);
+    } catch (err: any) {
+      setAiMsg({ type: 'error', text: err.message });
+    } finally {
+      setFcBusy(false);
+    }
+  };
+
   const handleAsk = async (e: React.FormEvent) => {
     e.preventDefault();
     const q = aiQuestion.trim();
@@ -321,6 +354,17 @@ export default function ReportPivotPage() {
           >
             {anomBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <AlertTriangle className="w-4 h-4" />}
             Anomalie
+          </button>
+
+          {/* Previsione */}
+          <button
+            onClick={handleForecast}
+            disabled={fcBusy}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-ground text-muted hover:bg-line transition disabled:opacity-50"
+            title="Previsione della prima misura lungo la prima dimensione (tempo)"
+          >
+            {fcBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4" />}
+            Previsione
           </button>
 
           {/* Toggle Builder */}

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from app.db.database import get_db, Report, AITranslationLog, Dashboard, DashboardWidget
 from app.core.deps import get_current_user, get_current_admin, get_current_superuser
-from app.services import llm, nl_pivot, insights, ai_log, nl_dashboard, anomaly
+from app.services import llm, nl_pivot, insights, ai_log, nl_dashboard, anomaly, forecast
 from app.services.llm.base import LLMError
 
 logger = logging.getLogger(__name__)
@@ -42,6 +42,13 @@ class AnomalyRequest(BaseModel):
     filters: Dict[str, Any] = {}
     method: str = "zscore"                 # zscore | iqr
     threshold: float = 3.0
+
+
+class ForecastRequest(BaseModel):
+    time_field: str
+    metric: Dict[str, Any]                 # {field, aggregation, name?}
+    periods: int = 3
+    filters: Dict[str, Any] = {}
 
 
 def _elapsed_ms(start: float) -> int:
@@ -229,6 +236,26 @@ async def report_anomalies(
     try:
         return await anomaly.analyze(
             db, report, data.group_by, data.metric, data.filters, data.method, data.threshold
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.post("/reports/{report_id}/forecast")
+async def report_forecast(
+    report_id: int,
+    data: ForecastRequest,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Previsione (regressione lineare) della misura lungo la dimensione temporale."""
+    report = (await db.execute(select(Report).where(Report.id == report_id))).scalar_one_or_none()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report non trovato")
+
+    try:
+        return await forecast.analyze(
+            db, report, data.time_field, data.metric, data.periods, data.filters
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
