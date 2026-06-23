@@ -73,3 +73,30 @@ async def get_current_admin(user: User = Depends(get_current_user)) -> User:
             detail="Admin access required"
         )
     return user
+
+
+async def get_current_steward(user: User = Depends(get_current_user)) -> User:
+    """
+    Require DATA_STEWARD role or SUPERUSER.
+
+    Il data steward governa il SIGNIFICATO dei dati (semantic layer):
+    - certifica colonne/misure, modifica i metadati semantici
+    - consulta il catalogo schema
+    - NON gestisce connessioni (credenziali) né utenti
+    """
+    if user.role not in ("data_steward", "superuser"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Data steward access required"
+        )
+    return user
+
+
+async def get_current_report_viewer(user: User = Depends(get_current_user)) -> User:
+    """Chi può consultare la lista dei report: superuser, admin, data steward."""
+    if user.role not in ("superuser", "admin", "data_steward"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Report access required"
+        )
+    return user

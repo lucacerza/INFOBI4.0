@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import get_db, Connection
-from app.core.deps import get_current_superuser
+from app.core.deps import get_current_steward
 from app.core.security import decrypt_password
 from app.services import schema_catalog
 
@@ -44,7 +44,7 @@ async def list_tables(
     conn_id: int,
     schema: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_current_superuser),
+    user=Depends(get_current_steward),
 ):
     """Elenca tabelle e viste della sorgente (SUPERUSER ONLY)."""
     connection = await _get_connection(db, conn_id)
@@ -63,7 +63,7 @@ async def describe_table(
     table: str,
     schema: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_current_superuser),
+    user=Depends(get_current_steward),
 ):
     """Dettaglio colonne + relazioni (FK) di una tabella (SUPERUSER ONLY)."""
     connection = await _get_connection(db, conn_id)

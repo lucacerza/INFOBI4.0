@@ -24,7 +24,7 @@ import {
  */
 const navItems = [
   { path: '/dashboards', label: 'Dashboard', icon: LayoutDashboard, roles: ['superuser', 'admin', 'user'] },
-  { path: '/reports', label: 'Report', icon: FileText, roles: ['superuser', 'admin'] },
+  { path: '/reports', label: 'Report', icon: FileText, roles: ['superuser', 'admin', 'data_steward'] },
   { path: '/connections', label: 'Sorgenti', icon: Database, roles: ['superuser'] },
   { path: '/users', label: 'Team', icon: Users, roles: ['superuser', 'admin'] },
 ];

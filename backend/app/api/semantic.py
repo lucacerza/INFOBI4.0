@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from app.db.database import get_db, Report, ColumnMetadata
-from app.core.deps import get_current_user, get_current_superuser
+from app.core.deps import get_current_user, get_current_steward
 from app.services import semantic
 
 logger = logging.getLogger(__name__)
@@ -77,9 +77,9 @@ async def list_semantic(
 async def autodetect_semantic(
     report_id: int,
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_current_superuser),
+    user=Depends(get_current_steward),
 ):
-    """Rileva automaticamente ruolo/tipo/aggregazione dalle colonne reali (SUPERUSER)."""
+    """Rileva automaticamente ruolo/tipo/aggregazione dalle colonne reali (STEWARD/SUPERUSER)."""
     report = await _get_report(db, report_id)
     try:
         return await semantic.autodetect(db, report)
@@ -96,9 +96,9 @@ async def update_semantic(
     column: str,
     data: ColumnMetaUpdate,
     db: AsyncSession = Depends(get_db),
-    user=Depends(get_current_superuser),
+    user=Depends(get_current_steward),
 ):
-    """Aggiorna i metadati semantici di una colonna (SUPERUSER)."""
+    """Aggiorna i metadati semantici di una colonna (STEWARD/SUPERUSER)."""
     if data.role is not None and data.role not in _VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"Ruolo non valido: {data.role}")
     if data.default_aggregation is not None and data.default_aggregation not in _VALID_AGGS:
