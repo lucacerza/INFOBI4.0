@@ -220,9 +220,33 @@ class ColumnMetadata(Base):
     format = Column(String(64))                              # es. "#,##0.00", "0%", "dd/mm/yyyy"
     default_aggregation = Column(String(16), default="none") # sum | avg | count | min | max | none
     is_hidden = Column(Boolean, default=False)               # escludi da UI/AI
+    is_certified = Column(Boolean, default=False)            # colonna "certificata": usabile dall'AI in modalità governata
     extra = Column(JSON, default={})                         # estensibilità: sinonimi NL, FK target, ecc.
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ============================================
+# AI - log delle traduzioni NL (governance/audit/feedback)
+# ============================================
+class AITranslationLog(Base):
+    """Traccia ogni richiesta AI (NL->pivot, insight): domanda, esito, feedback."""
+    __tablename__ = "ai_translation_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    username = Column(String(255))
+    report_id = Column(Integer, ForeignKey("reports.id", ondelete="SET NULL"), nullable=True)
+    kind = Column(String(32))                # pivot | insight
+    question = Column(Text)
+    result = Column(JSON, default={})        # config prodotta (pivot) o sintesi (insight)
+    status = Column(String(16), default="ok")  # ok | rejected | error
+    error = Column(Text)
+    provider = Column(String(32))
+    model = Column(String(64))
+    latency_ms = Column(Integer)
+    helpful = Column(Boolean)                # feedback utente (null = nessun feedback)
+    feedback_note = Column(Text)
 
 # ============================================
 # AUDIT LOG

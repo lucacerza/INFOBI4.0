@@ -32,6 +32,7 @@ class ColumnMetaResponse(BaseModel):
     format: Optional[str] = None
     default_aggregation: str
     is_hidden: bool
+    is_certified: bool = False
     extra: Optional[Dict[str, Any]] = {}
 
     class Config:
@@ -46,6 +47,7 @@ class ColumnMetaUpdate(BaseModel):
     format: Optional[str] = None
     default_aggregation: Optional[str] = None  # sum | avg | count | min | max | none
     is_hidden: Optional[bool] = None
+    is_certified: Optional[bool] = None
     extra: Optional[Dict[str, Any]] = None
 
 

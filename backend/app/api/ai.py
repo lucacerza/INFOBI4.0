@@ -1,16 +1,16 @@
-"""AI API: stato configurazione LLM (8.1) e NL -> Pivot (8.2)."""
+"""AI API: stato LLM (8.1), NL->Pivot (8.2), insight (8.3), governance/log (8.4)."""
+import time
 import logging
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
-from typing import Any, Dict, List
-
-from app.db.database import get_db, Report
+from app.db.database import get_db, Report, AITranslationLog
 from app.core.deps import get_current_user, get_current_superuser
-from app.services import llm, nl_pivot, insights
+from app.services import llm, nl_pivot, insights, ai_log
 from app.services.llm.base import LLMError
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,15 @@ class InsightRequest(BaseModel):
     group_by: List[str] = []
     metrics: List[Dict[str, Any]] = []     # [{field, aggregation, name?}]
     filters: Dict[str, Any] = {}           # {field: {type, value|values}}
+
+
+class FeedbackRequest(BaseModel):
+    helpful: bool
+    note: Optional[str] = None
+
+
+def _elapsed_ms(start: float) -> int:
+    return int((time.perf_counter() - start) * 1000)
 
 
 @router.get("/status")
@@ -42,7 +51,7 @@ async def ask_report(
 ):
     """
     Domanda in linguaggio naturale -> configurazione pivot validata.
-    Ritorna {config, explanation}: il frontend applica la config alla pivot.
+    Ogni richiesta viene loggata (governance/feedback).
     """
     question = (data.question or "").strip()
     if not question:
@@ -52,12 +61,27 @@ async def ask_report(
     if not report:
         raise HTTPException(status_code=404, detail="Report non trovato")
 
+    info = llm.provider_info()
+    start = time.perf_counter()
+
+    async def log(status: str, result=None, error=None):
+        return await ai_log.record(
+            db, username=getattr(user, "username", None), report_id=report_id,
+            kind="pivot", question=question, result=result, status=status, error=error,
+            provider=info["provider"], model=info["model"], latency_ms=_elapsed_ms(start),
+        )
+
     try:
-        return await nl_pivot.ask(db, report, llm.get_llm(), question)
+        result = await nl_pivot.ask(db, report, llm.get_llm(), question)
+        entry = await log("ok", result=result.get("config"))
+        result["log_id"] = entry.id
+        return result
     except ValueError as e:
-        # config non valida o colonna inventata (guardrail anti-allucinazione)
+        # guardrail anti-allucinazione / config non valida
+        await log("rejected", error=str(e))
         raise HTTPException(status_code=422, detail=str(e))
     except LLMError as e:
+        await log("error", error=str(e))
         logger.warning("AI non disponibile per report %s: %s", report_id, e)
         raise HTTPException(status_code=503, detail=f"AI non disponibile: {e}")
 
@@ -82,10 +106,70 @@ async def report_insights(
     if not metrics:
         raise HTTPException(status_code=400, detail="Nessuna misura: configura la pivot o i default del report")
 
+    info = llm.provider_info()
+    start = time.perf_counter()
+    question = f"insight(group_by={group_by})"
+
+    async def log(status: str, result=None, error=None):
+        return await ai_log.record(
+            db, username=getattr(user, "username", None), report_id=report_id,
+            kind="insight", question=question, result=result, status=status, error=error,
+            provider=info["provider"], model=info["model"], latency_ms=_elapsed_ms(start),
+        )
+
     try:
-        return await insights.narrate(db, report, llm.get_llm(), group_by, metrics, data.filters)
+        result = await insights.narrate(db, report, llm.get_llm(), group_by, metrics, data.filters)
+        entry = await log("ok", result={"row_count": result.get("row_count")})
+        result["log_id"] = entry.id
+        return result
     except ValueError as e:
+        await log("rejected", error=str(e))
         raise HTTPException(status_code=422, detail=str(e))
     except LLMError as e:
+        await log("error", error=str(e))
         logger.warning("AI non disponibile per insight report %s: %s", report_id, e)
         raise HTTPException(status_code=503, detail=f"AI non disponibile: {e}")
+
+
+@router.get("/logs")
+async def list_ai_logs(
+    limit: int = 100,
+    report_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_superuser),
+):
+    """Storico delle traduzioni AI (SUPERUSER)."""
+    rows = await ai_log.list_logs(db, limit=min(limit, 500), report_id=report_id)
+    return [
+        {
+            "id": r.id,
+            "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+            "username": r.username,
+            "report_id": r.report_id,
+            "kind": r.kind,
+            "question": r.question,
+            "result": r.result,
+            "status": r.status,
+            "error": r.error,
+            "provider": r.provider,
+            "model": r.model,
+            "latency_ms": r.latency_ms,
+            "helpful": r.helpful,
+            "feedback_note": r.feedback_note,
+        }
+        for r in rows
+    ]
+
+
+@router.post("/logs/{log_id}/feedback")
+async def ai_feedback(
+    log_id: int,
+    data: FeedbackRequest,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Feedback utente su una traduzione AI (pollice su/giù + nota)."""
+    entry = await ai_log.set_feedback(db, log_id, data.helpful, data.note)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Log non trovato")
+    return {"id": entry.id, "helpful": entry.helpful, "feedback_note": entry.feedback_note}

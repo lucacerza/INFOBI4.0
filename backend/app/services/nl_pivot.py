@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.database import Report
 from app.services import semantic
 from app.services.llm.base import ResilientLLM, ToolSpec
@@ -85,6 +86,10 @@ async def build_grounding(db: AsyncSession, report: Report) -> List[Dict[str, An
     """
     meta = await semantic.list_metadata(db, report.id)
     if meta:
+        # governance: escludi le colonne nascoste; in modalità certificata, solo le certificate
+        cols = [m for m in meta if not m.is_hidden]
+        if settings.AI_CERTIFIED_ONLY:
+            cols = [m for m in cols if m.is_certified]
         return [{
             "name": m.column_name,
             "business_name": m.business_name,
@@ -92,7 +97,8 @@ async def build_grounding(db: AsyncSession, report: Report) -> List[Dict[str, An
             "data_type": m.data_type,
             "default_aggregation": m.default_aggregation,
             "unit": m.unit,
-        } for m in meta]
+            "is_certified": m.is_certified,
+        } for m in cols]
 
     cols = await semantic._report_columns(db, report)
     grounding = []

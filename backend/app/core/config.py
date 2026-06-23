@@ -63,6 +63,8 @@ class Settings(BaseSettings):
     LLM_MAX_RETRIES: int = 3            # ritenta gli errori transitori (429/529/5xx)
     LLM_RETRY_BASE_DELAY: float = 0.5   # backoff esponenziale: base * 2**tentativo
     LLM_TIMEOUT: int = 60
+    # Governance: se True l'AI può usare SOLO le colonne certificate (is_certified)
+    AI_CERTIFIED_ONLY: bool = False
 
     # Backup automatico del DB applicativo (SQLite)
     BACKUP_ENABLED: bool = True

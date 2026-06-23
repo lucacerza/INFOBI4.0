@@ -7,7 +7,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import {
   ArrowLeft, Download, RefreshCw, Loader2, FileSpreadsheet,
-  FileText, Clock, Database, Zap, Edit, LayoutGrid, Boxes, Tags, Sparkles
+  FileText, Clock, Database, Zap, Edit, LayoutGrid, Boxes, Tags, Sparkles, ShieldCheck
 } from 'lucide-react';
 import { apiFetch } from '../services/apiClient';
 
@@ -423,6 +423,18 @@ export default function ReportViewerPage() {
                         onBlur={() => patchSem(c.column_name, { unit: c.unit })}
                         className="w-16 px-2 py-1 text-sm border border-line rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent num"
                       />
+                      <button
+                        type="button"
+                        onClick={() => patchSem(c.column_name, { is_certified: !c.is_certified })}
+                        title={c.is_certified ? 'Certificata (usabile dall\'AI in modalità governata)' : 'Non certificata'}
+                        className={`p-1.5 rounded-lg border transition shrink-0 ${
+                          c.is_certified
+                            ? 'bg-accent-soft text-accent-strong border-accent'
+                            : 'text-muted border-line hover:bg-ground'
+                        }`}
+                      >
+                        <ShieldCheck className="w-4 h-4" />
+                      </button>
                     </div>
                   ))}
                 </div>

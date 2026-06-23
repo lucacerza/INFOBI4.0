@@ -16,7 +16,7 @@ import TreeDataGrid from '../components/TreeDataGrid';
 import BiGridConfig from '../components/BiGridConfig';
 import {
   ArrowLeft, Download, Settings, Loader2,
-  ChevronRight, Save, LayoutGrid, Edit, Sparkles, Lightbulb, X
+  ChevronRight, Save, LayoutGrid, Edit, Sparkles, Lightbulb, X, ThumbsUp, ThumbsDown
 } from 'lucide-react';
 
 interface ColumnInfo {
@@ -66,6 +66,8 @@ export default function ReportPivotPage() {
   const [aiMsg, setAiMsg] = useState<{ type: 'info' | 'error'; text: string } | null>(null);
   const [insight, setInsight] = useState<string | null>(null);
   const [insightBusy, setInsightBusy] = useState(false);
+  const [aiLogId, setAiLogId] = useState<number | null>(null);
+  const [feedbackGiven, setFeedbackGiven] = useState(false);
 
   // Load report and schema
   useEffect(() => {
@@ -211,11 +213,26 @@ export default function ReportPivotPage() {
       applyAiConfig(data.config);
       setShowBuilder(true);
       setAiMsg({ type: 'info', text: data.explanation || 'Configurazione applicata.' });
+      setAiLogId(data.log_id ?? null);
+      setFeedbackGiven(false);
     } catch (err: any) {
       setAiMsg({ type: 'error', text: err.message });
+      setAiLogId(null);
     } finally {
       setAiBusy(false);
     }
+  };
+
+  // Feedback sulla traduzione AI (chiude il loop di governance)
+  const sendFeedback = async (helpful: boolean) => {
+    if (!aiLogId) return;
+    setFeedbackGiven(true);
+    try {
+      await apiFetch(`/api/ai/logs/${aiLogId}/feedback`, {
+        method: 'POST',
+        body: JSON.stringify({ helpful }),
+      });
+    } catch { /* non bloccante */ }
   };
 
   if (loading) {
@@ -295,9 +312,25 @@ export default function ReportPivotPage() {
           className="flex-1 px-3 py-1.5 text-sm border border-line rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent"
         />
         {aiMsg && (
-          <span className={`text-xs truncate max-w-[40%] ${aiMsg.type === 'error' ? 'text-neg' : 'text-muted'}`}>
+          <span className={`text-xs truncate max-w-[35%] ${aiMsg.type === 'error' ? 'text-neg' : 'text-muted'}`}>
             {aiMsg.text}
           </span>
+        )}
+        {aiLogId && aiMsg?.type === 'info' && (
+          feedbackGiven ? (
+            <span className="text-xs text-muted shrink-0">grazie!</span>
+          ) : (
+            <span className="flex items-center gap-1 shrink-0">
+              <button type="button" onClick={() => sendFeedback(true)} title="Utile"
+                className="p-1 rounded hover:bg-ground text-muted hover:text-pos">
+                <ThumbsUp className="w-4 h-4" />
+              </button>
+              <button type="button" onClick={() => sendFeedback(false)} title="Non utile"
+                className="p-1 rounded hover:bg-ground text-muted hover:text-neg">
+                <ThumbsDown className="w-4 h-4" />
+              </button>
+            </span>
+          )
         )}
         <button
           type="submit"
