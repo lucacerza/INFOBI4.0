@@ -8,9 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
-from app.db.database import get_db, Report, AITranslationLog
-from app.core.deps import get_current_user, get_current_superuser
-from app.services import llm, nl_pivot, insights, ai_log
+from app.db.database import get_db, Report, AITranslationLog, Dashboard, DashboardWidget
+from app.core.deps import get_current_user, get_current_admin, get_current_superuser
+from app.services import llm, nl_pivot, insights, ai_log, nl_dashboard
 from app.services.llm.base import LLMError
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,10 @@ class InsightRequest(BaseModel):
 class FeedbackRequest(BaseModel):
     helpful: bool
     note: Optional[str] = None
+
+
+class DashboardRequest(BaseModel):
+    description: str
 
 
 def _elapsed_ms(start: float) -> int:
@@ -129,6 +133,75 @@ async def report_insights(
         await log("error", error=str(e))
         logger.warning("AI non disponibile per insight report %s: %s", report_id, e)
         raise HTTPException(status_code=503, detail=f"AI non disponibile: {e}")
+
+
+@router.post("/reports/{report_id}/dashboard")
+async def ai_dashboard(
+    report_id: int,
+    data: DashboardRequest,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_admin),
+):
+    """
+    Descrizione in linguaggio naturale -> dashboard creata con i widget proposti.
+    Crea una nuova dashboard (sui dati del report) e ritorna il suo id.
+    """
+    description = (data.description or "").strip()
+    if not description:
+        raise HTTPException(status_code=400, detail="Descrizione vuota")
+
+    report = (await db.execute(select(Report).where(Report.id == report_id))).scalar_one_or_none()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report non trovato")
+
+    info = llm.provider_info()
+    start = time.perf_counter()
+
+    async def log(status: str, result=None, error=None):
+        return await ai_log.record(
+            db, username=getattr(user, "username", None), report_id=report_id,
+            kind="dashboard", question=description, result=result, status=status, error=error,
+            provider=info["provider"], model=info["model"], latency_ms=_elapsed_ms(start),
+        )
+
+    try:
+        spec = await nl_dashboard.design(db, report, llm.get_llm(), description)
+    except ValueError as e:
+        await log("rejected", error=str(e))
+        raise HTTPException(status_code=422, detail=str(e))
+    except LLMError as e:
+        await log("error", error=str(e))
+        logger.warning("AI dashboard non disponibile per report %s: %s", report_id, e)
+        raise HTTPException(status_code=503, detail=f"AI non disponibile: {e}")
+
+    # Persiste la dashboard + i widget
+    dashboard = Dashboard(
+        name=spec["title"],
+        description=f"Generata dall'AI: {description[:200]}",
+        created_by=user.id,
+    )
+    db.add(dashboard)
+    await db.commit()
+    await db.refresh(dashboard)
+
+    for w in spec["widgets"]:
+        db.add(DashboardWidget(
+            dashboard_id=dashboard.id,
+            report_id=report_id,
+            widget_type=w["widget_type"],
+            title=w["title"],
+            config=w["config"],
+            position=w["position"],
+        ))
+    await db.commit()
+
+    await log("ok", result={"dashboard_id": dashboard.id, "widgets": len(spec["widgets"])})
+    return {
+        "dashboard_id": dashboard.id,
+        "title": spec["title"],
+        "widget_count": len(spec["widgets"]),
+        "widgets": spec["widgets"],
+    }
 
 
 @router.get("/logs")

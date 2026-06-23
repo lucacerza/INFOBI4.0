@@ -3,7 +3,7 @@
  * Shows report metadata and provides quick access to Pivot view
  */
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import {
   ArrowLeft, Download, RefreshCw, Loader2, FileSpreadsheet,
@@ -24,6 +24,7 @@ interface Report {
 
 export default function ReportViewerPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
   const isSuperuser = user?.role === 'superuser';
@@ -43,6 +44,10 @@ export default function ReportViewerPage() {
   // Semantic layer state
   const [semCols, setSemCols] = useState<any[]>([]);
   const [semBusy, setSemBusy] = useState(false);
+
+  // NL -> Dashboard
+  const [dashDesc, setDashDesc] = useState('');
+  const [dashBusy, setDashBusy] = useState(false);
 
   // Load on mount
   useEffect(() => {
@@ -148,6 +153,27 @@ export default function ReportViewerPage() {
         setSemCols(cs => cs.map(c => (c.column_name === column ? updated : c)));
       }
     } catch { /* errore di rete: lascia lo stato locale */ }
+  };
+
+  // Genera una dashboard dai dati del report descrivendola a parole
+  const handleGenerateDashboard = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const desc = dashDesc.trim();
+    if (!desc) return;
+    setDashBusy(true);
+    try {
+      const res = await apiFetch(`/api/ai/reports/${reportId}/dashboard`, {
+        method: 'POST',
+        body: JSON.stringify({ description: desc }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Errore AI');
+      navigate(`/dashboards/${data.dashboard_id}`);
+    } catch (err: any) {
+      alert(`Generazione dashboard fallita: ${err.message}`);
+    } finally {
+      setDashBusy(false);
+    }
   };
 
   const handleRefresh = async () => {
@@ -440,6 +466,36 @@ export default function ReportViewerPage() {
                 </div>
               )}
             </div>
+          )}
+
+          {/* Genera dashboard con l'AI — solo superuser */}
+          {isSuperuser && (
+            <form onSubmit={handleGenerateDashboard} className="text-left bg-surface-2 border border-line rounded-xl p-4 mb-6">
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="w-4 h-4 text-accent" />
+                <span className="font-semibold text-ink text-sm">Genera dashboard con l'AI</span>
+              </div>
+              <p className="text-xs text-muted mb-3">
+                Descrivi cosa vuoi vedere: l'AI crea i widget sui dati di questo report.
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  value={dashDesc}
+                  onChange={e => setDashDesc(e.target.value)}
+                  placeholder="es. «andamento per anno e dettaglio per regione»"
+                  className="flex-1 px-3 py-2 text-sm border border-line rounded-xl focus:ring-2 focus:ring-accent focus:border-transparent"
+                />
+                <button
+                  type="submit"
+                  disabled={dashBusy || !dashDesc.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold disabled:opacity-50 hover:brightness-110 shrink-0"
+                  style={{ background: 'linear-gradient(100deg,#7B6CF5,#6A8DF5)' }}
+                >
+                  {dashBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  Genera
+                </button>
+              </div>
+            </form>
           )}
 
           <div className="flex items-center justify-center gap-4 pt-6 border-t">
