@@ -47,15 +47,20 @@ async def lifespan(app: FastAPI):
     from app.core.warmup import warm_up_connections
     await warm_up_connections()
 
-    # Scheduler per il backup automatico del DB SQLite
+    # Scheduler: backup automatico + sync warehouse (entrambi opzionali)
     scheduler = None
-    if settings.BACKUP_ENABLED:
+    if settings.BACKUP_ENABLED or settings.WAREHOUSE_SYNC_ENABLED:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
-        from app.services.backup import run_backups
         scheduler = AsyncIOScheduler()
-        scheduler.add_job(run_backups, "interval", hours=settings.BACKUP_INTERVAL_HOURS, id="db_backup")
+        if settings.BACKUP_ENABLED:
+            from app.services.backup import run_backups
+            scheduler.add_job(run_backups, "interval", hours=settings.BACKUP_INTERVAL_HOURS, id="db_backup")
+            logger.info(f"🗄️  Backup automatico (DB + warehouse) attivo (ogni {settings.BACKUP_INTERVAL_HOURS}h, conserva {settings.BACKUP_KEEP})")
+        if settings.WAREHOUSE_SYNC_ENABLED:
+            from app.services.warehouse_sync import refresh_all
+            scheduler.add_job(refresh_all, "interval", hours=settings.WAREHOUSE_SYNC_INTERVAL_HOURS, id="wh_sync")
+            logger.info(f"🔄 Sync warehouse automatico attivo (ogni {settings.WAREHOUSE_SYNC_INTERVAL_HOURS}h)")
         scheduler.start()
-        logger.info(f"🗄️  Backup automatico (DB + warehouse) attivo (ogni {settings.BACKUP_INTERVAL_HOURS}h, conserva {settings.BACKUP_KEEP})")
 
     yield
 

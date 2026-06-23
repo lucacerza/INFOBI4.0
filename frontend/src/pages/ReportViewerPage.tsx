@@ -40,6 +40,9 @@ export default function ReportViewerPage() {
   const [whDataset, setWhDataset] = useState<any | null>(null);
   const [whBacked, setWhBacked] = useState(false);
   const [whBusy, setWhBusy] = useState(false);
+  const [whMode, setWhMode] = useState<'full' | 'incremental'>('full');
+  const [whWatermark, setWhWatermark] = useState('');
+  const [whKeys, setWhKeys] = useState('');
 
   // Semantic layer state
   const [semCols, setSemCols] = useState<any[]>([]);
@@ -73,7 +76,13 @@ export default function ReportViewerPage() {
         const whRes = await apiFetch('/api/warehouse');
         if (whRes.ok) {
           const datasets = await whRes.json();
-          setWhDataset(datasets.find((d: any) => d.source_report_id === reportId) || null);
+          const found = datasets.find((d: any) => d.source_report_id === reportId) || null;
+          setWhDataset(found);
+          if (found) {
+            setWhMode(found.sync_mode === 'incremental' ? 'incremental' : 'full');
+            setWhWatermark(found.watermark_column || '');
+            setWhKeys((found.key_columns || []).join(', '));
+          }
         }
 
         const semRes = await apiFetch(`/api/semantic/reports/${reportId}`);
@@ -92,9 +101,14 @@ export default function ReportViewerPage() {
   const handleMaterialize = async () => {
     setWhBusy(true);
     try {
+      const body: any = { report_id: reportId, sync_mode: whMode };
+      if (whMode === 'incremental') {
+        body.watermark_column = whWatermark.trim();
+        body.key_columns = whKeys.split(',').map(s => s.trim()).filter(Boolean);
+      }
       const res = await apiFetch('/api/warehouse/from-report', {
         method: 'POST',
-        body: JSON.stringify({ report_id: reportId }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error((await res.json()).detail || 'Errore');
       setWhDataset(await res.json());
@@ -349,6 +363,39 @@ export default function ReportViewerPage() {
                   ? `Ultima sincronizzazione: ${new Date(whDataset.last_sync_at).toLocaleString('it-IT')}`
                   : 'Crea una copia colonnare del report per query più veloci e indipendenti dalla sorgente.'}
               </p>
+
+              {/* Modalità ETL */}
+              <div className="flex items-center gap-2 flex-wrap mb-3">
+                <select
+                  value={whMode}
+                  onChange={e => setWhMode(e.target.value as 'full' | 'incremental')}
+                  className="px-2 py-1.5 text-sm border border-line rounded-lg bg-surface"
+                >
+                  <option value="full">Full refresh</option>
+                  <option value="incremental">Incrementale</option>
+                </select>
+                {whMode === 'incremental' && (
+                  <>
+                    <input
+                      value={whWatermark}
+                      onChange={e => setWhWatermark(e.target.value)}
+                      placeholder="colonna watermark (es. updated_at)"
+                      className="flex-1 min-w-[10rem] px-2 py-1.5 text-sm border border-line rounded-lg num"
+                    />
+                    <input
+                      value={whKeys}
+                      onChange={e => setWhKeys(e.target.value)}
+                      placeholder="chiavi merge, es. id (opz.)"
+                      className="w-40 px-2 py-1.5 text-sm border border-line rounded-lg num"
+                    />
+                    {whDataset?.last_watermark && (
+                      <span className="num text-xs px-2 py-1 rounded bg-ground text-muted">
+                        watermark: {whDataset.last_watermark}
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
 
               <div className="flex items-center gap-2 flex-wrap">
                 <button

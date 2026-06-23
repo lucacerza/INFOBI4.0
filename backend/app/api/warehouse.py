@@ -14,10 +14,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
-from app.db.database import get_db, Report, Connection, WarehouseDataset
+from app.db.database import get_db, Report, WarehouseDataset
 from app.core.deps import get_current_superuser
-from app.core.security import decrypt_password
-from app.services import warehouse, backup
+from app.services import warehouse, backup, warehouse_sync
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +34,7 @@ class DatasetResponse(BaseModel):
     sync_mode: str = "full"
     watermark_column: Optional[str] = None
     last_watermark: Optional[str] = None
+    key_columns: list = []
     last_error: Optional[str] = None
     last_sync_at: Optional[datetime] = None
     columns: list = []
@@ -52,59 +52,14 @@ class CreateFromReport(BaseModel):
 
 
 # ---------- Helper ----------
-def _config_of(connection: Connection) -> dict:
-    return {
-        "host": connection.host,
-        "port": connection.port,
-        "database": connection.database,
-        "username": connection.username,
-        "password": decrypt_password(connection.password_encrypted),
-        "ssl_enabled": connection.ssl_enabled,
-    }
-
-
 async def _materialize(db: AsyncSession, ds: WarehouseDataset) -> WarehouseDataset:
-    """Estrae dalla sorgente e (ri)materializza la tabella. Aggiorna stato/errore/righe."""
-    connection = (await db.execute(
-        select(Connection).where(Connection.id == ds.source_connection_id)
-    )).scalar_one_or_none()
-    if not connection:
-        raise HTTPException(status_code=400, detail="Connessione sorgente non trovata")
-
-    ds.status = "syncing"
-    ds.last_error = None
-    await db.commit()
-
+    """(Ri)materializza il dataset (full o incrementale) traducendo gli errori in HTTP."""
     try:
-        config = _config_of(connection)
-        if ds.sync_mode == "incremental" and ds.watermark_column:
-            result = await run_in_threadpool(
-                warehouse.materialize_incremental,
-                ds.table_name, connection.db_type, config, ds.source_query,
-                ds.watermark_column, ds.last_watermark, ds.key_columns or [],
-            )
-            ds.row_count = result["total_rows"]
-            ds.columns = result["columns"]
-            ds.last_watermark = result["watermark"]
-        else:
-            row_count, columns = await run_in_threadpool(
-                warehouse.materialize_from_source,
-                ds.table_name, connection.db_type, config, ds.source_query,
-            )
-            ds.row_count = row_count
-            ds.columns = columns
-        ds.status = "ready"
-        ds.last_sync_at = datetime.utcnow()
+        return await warehouse_sync.sync_dataset(db, ds)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.exception("Materializzazione fallita per dataset %s", ds.id)
-        ds.status = "error"
-        ds.last_error = str(e)
-        await db.commit()
         raise HTTPException(status_code=400, detail=f"Materializzazione fallita: {e}")
-
-    await db.commit()
-    await db.refresh(ds)
-    return ds
 
 
 # ---------- Endpoint ----------
