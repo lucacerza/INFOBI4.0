@@ -77,7 +77,17 @@ export default function Layout() {
   const railW = collapsed ? 72 : 236;
 
   return (
-    <div className="h-screen flex bg-ground text-ink">
+    <div className="h-screen flex bg-ground text-ink relative overflow-hidden">
+      {/* Aurora atmosferica (solo dark) */}
+      {theme === 'dark' && (
+        <div aria-hidden className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+          <div className="absolute" style={{ top: -220, left: -140, width: 680, height: 680, borderRadius: '50%', background: 'radial-gradient(circle, rgba(123,108,245,.28), transparent 62%)', filter: 'blur(40px)' }} />
+          <div className="absolute" style={{ bottom: -260, right: -120, width: 640, height: 640, borderRadius: '50%', background: 'radial-gradient(circle, rgba(79,227,193,.18), transparent 62%)', filter: 'blur(44px)' }} />
+          <div className="absolute" style={{ top: '28%', right: '22%', width: 360, height: 360, borderRadius: '50%', background: 'radial-gradient(circle, rgba(245,113,176,.10), transparent 60%)', filter: 'blur(48px)' }} />
+          <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(rgba(255,255,255,.03) 1px, transparent 1px)', backgroundSize: '26px 26px' }} />
+        </div>
+      )}
+
       {/* Backdrop mobile */}
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/60 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />

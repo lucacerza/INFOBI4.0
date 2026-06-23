@@ -24,6 +24,15 @@ interface Report {
   updated_at: string;
 }
 
+// Tinte Pulse per le tile-icona (variazione cromatica come nel mockup)
+const TINTS = [
+  { color: '#A99BFF', bg: 'rgba(123,108,245,.16)' },
+  { color: '#4FE3C1', bg: 'rgba(79,227,193,.14)' },
+  { color: '#F5A65B', bg: 'rgba(245,166,91,.14)' },
+  { color: '#F571B0', bg: 'rgba(245,113,176,.14)' },
+  { color: '#6BD9E8', bg: 'rgba(107,217,232,.14)' },
+];
+
 export default function ReportsPage() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,16 +91,17 @@ export default function ReportsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-ink">Report</h1>
-          <p className="text-muted">{reports.length} report disponibili</p>
+          <h1 className="font-disp text-[26px] font-bold tracking-tight text-ink">Report</h1>
+          <p className="text-muted text-sm mt-1">{reports.length} report disponibili</p>
         </div>
-        
+
         {isSuperuser && (
           <Link
             to="/reports/new"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent text-white rounded-lg transition"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition hover:brightness-110"
+            style={{ background: 'linear-gradient(100deg,#7B6CF5,#6A8DF5)' }}
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="w-4 h-4" />
             Nuovo Report
           </Link>
         )}
@@ -117,17 +127,19 @@ export default function ReportsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredReports.map(report => (
+          {filteredReports.map((report, idx) => {
+            const t = TINTS[idx % TINTS.length];
+            return (
             <div
               key={report.id}
-              className="relative p-5 bg-surface border border-line rounded-xl hover:shadow-lg hover:border-accent transition group"
+              className="relative p-5 bg-surface border border-line rounded-2xl hover:shadow-lg hover:border-accent transition group"
             >
               <Link
                 to={`/reports/${report.id}/pivot`}
                 className="block"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-accent-soft text-accent flex items-center justify-center flex-shrink-0 group-hover:bg-accent group-hover:text-white transition">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: t.bg, color: t.color }}>
                     <FileText className="w-5 h-5" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -181,7 +193,8 @@ export default function ReportsPage() {
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
