@@ -109,27 +109,12 @@ export default function ReportViewerPage() {
             <ArrowLeft className="w-5 h-5 text-muted" />
           </Link>
           <div>
-            <h1 className="font-semibold text-ink">{report?.name || 'Report'}</h1>
+            <h1 className="font-disp font-bold tracking-tight text-ink">{report?.name || 'Report'}</h1>
             {report?.description && <p className="text-xs text-muted">{report.description}</p>}
           </div>
         </div>
-        
+
         <div className="flex items-center gap-2">
-          {/* Stats */}
-          <div className="hidden md:flex items-center gap-3 px-3 py-1.5 bg-ground rounded-lg text-xs">
-            {stats.cached && (
-              <span className="flex items-center gap-1 text-pos font-medium">
-                <Zap className="w-3 h-3" />Cache
-              </span>
-            )}
-            <span className="flex items-center gap-1 text-muted">
-              <Database className="w-3 h-3" />{stats.rows.toLocaleString()}
-            </span>
-            <span className="flex items-center gap-1 text-muted">
-              <Clock className="w-3 h-3" />{stats.time.toFixed(0)}ms
-            </span>
-          </div>
-          
           {/* Pivot Avanzato */}
           <Link
             to={`/reports/${reportId}/pivot`}
@@ -168,7 +153,7 @@ export default function ReportViewerPage() {
           {/* Admin: Edit Query */}
           {isAdmin && (
             <>
-              <div className="w-px h-6 bg-slate-200 mx-1" />
+              <div className="w-px h-6 bg-line mx-1" />
               
               <Link
                 to={`/reports/${reportId}/edit`}
