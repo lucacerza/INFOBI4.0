@@ -11,7 +11,8 @@ import {
   Clock,
   Database,
   Edit,
-  Trash
+  Trash,
+  Sparkles
 } from 'lucide-react';
 
 interface Report {
@@ -37,6 +38,10 @@ export default function ReportsPage() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [catQ, setCatQ] = useState('');
+  const [catBusy, setCatBusy] = useState(false);
+  const [catAnswer, setCatAnswer] = useState<string | null>(null);
+  const [catSources, setCatSources] = useState<any[]>([]);
   const { user } = useAuthStore();
   const isSuperuser = user?.role === 'superuser';  // Solo superuser può creare/modificare/eliminare report
   
@@ -78,6 +83,29 @@ export default function ReportsPage() {
     }
   };
   
+  const handleCatalogChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = catQ.trim();
+    if (!q) return;
+    setCatBusy(true);
+    setCatAnswer(null);
+    try {
+      const res = await apiFetch('/api/ai/catalog/chat', {
+        method: 'POST',
+        body: JSON.stringify({ question: q }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Errore AI');
+      setCatAnswer(data.answer || 'Nessuna risposta.');
+      setCatSources(data.sources || []);
+    } catch (err: any) {
+      setCatAnswer(`Errore: ${err.message}`);
+      setCatSources([]);
+    } finally {
+      setCatBusy(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -119,6 +147,43 @@ export default function ReportsPage() {
         />
       </div>
       
+      {/* Catalogo AI: chiedi cosa esiste nel catalogo */}
+      <div className="bg-surface border border-line rounded-2xl p-4 mb-6">
+        <form onSubmit={handleCatalogChat} className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-accent shrink-0" />
+          <input
+            value={catQ}
+            onChange={e => setCatQ(e.target.value)}
+            placeholder="Chiedi al catalogo: es. «quali report parlano di vendite?»"
+            className="flex-1 px-3 py-2 text-sm border border-line rounded-xl focus:ring-2 focus:ring-accent focus:border-transparent"
+          />
+          <button
+            type="submit"
+            disabled={catBusy || !catQ.trim()}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold disabled:opacity-50 hover:brightness-110 shrink-0"
+            style={{ background: 'linear-gradient(100deg,#7B6CF5,#6A8DF5)' }}
+          >
+            {catBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            Chiedi
+          </button>
+        </form>
+        {catAnswer && (
+          <div className="mt-3 pt-3 border-t border-line">
+            <p className="text-sm text-ink whitespace-pre-line">{catAnswer}</p>
+            {catSources.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {catSources.map((s: any) => (
+                  <Link key={s.report_id} to={`/reports/${s.report_id}`}
+                    className="text-xs px-2 py-1 rounded-lg bg-accent-soft text-accent-strong hover:brightness-105">
+                    {s.name}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Reports grid */}
       {filteredReports.length === 0 ? (
         <div className="text-center py-12">

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from app.db.database import get_db, Report, AITranslationLog, Dashboard, DashboardWidget
 from app.core.deps import get_current_user, get_current_admin, get_current_superuser
-from app.services import llm, nl_pivot, insights, ai_log, nl_dashboard, anomaly, forecast
+from app.services import llm, nl_pivot, insights, ai_log, nl_dashboard, anomaly, forecast, catalog_rag
 from app.services.llm.base import LLMError
 
 logger = logging.getLogger(__name__)
@@ -49,6 +49,10 @@ class ForecastRequest(BaseModel):
     metric: Dict[str, Any]                 # {field, aggregation, name?}
     periods: int = 3
     filters: Dict[str, Any] = {}
+
+
+class CatalogChatRequest(BaseModel):
+    question: str
 
 
 def _elapsed_ms(start: float) -> int:
@@ -259,6 +263,39 @@ async def report_forecast(
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.post("/catalog/chat")
+async def catalog_chat(
+    data: CatalogChatRequest,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Chatbot sul catalogo (RAG sui metadati: report, colonne, misure)."""
+    question = (data.question or "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Domanda vuota")
+
+    info = llm.provider_info()
+    start = time.perf_counter()
+    try:
+        result = await catalog_rag.answer(db, llm.get_llm(), question)
+    except LLMError as e:
+        await ai_log.record(
+            db, username=getattr(user, "username", None), report_id=None,
+            kind="catalog_chat", question=question, status="error", error=str(e),
+            provider=info["provider"], model=info["model"], latency_ms=_elapsed_ms(start),
+        )
+        raise HTTPException(status_code=503, detail=f"AI non disponibile: {e}")
+
+    await ai_log.record(
+        db, username=getattr(user, "username", None), report_id=None,
+        kind="catalog_chat", question=question,
+        result={"sources": [s["report_id"] for s in result["sources"]]},
+        status="ok", provider=info["provider"], model=info["model"],
+        latency_ms=_elapsed_ms(start),
+    )
+    return result
 
 
 @router.get("/logs")
