@@ -99,8 +99,8 @@ function App() {
           {/* SUPERUSER ONLY: Connections */}
           <Route path="connections" element={<SuperuserRoute><ConnectionsPage /></SuperuserRoute>} />
 
-          {/* Reports: lista visibile a superuser e admin, modifica solo superuser */}
-          <Route path="reports" element={<AdminRoute><ReportsPage /></AdminRoute>} />
+          {/* Reports: lista visibile a superuser, admin e data steward; modifica solo superuser */}
+          <Route path="reports" element={<RoleRoute roles={['superuser', 'admin', 'data_steward']}><ReportsPage /></RoleRoute>} />
           <Route path="reports/new" element={<SuperuserRoute><ReportEditorPage /></SuperuserRoute>} />
           <Route path="reports/:id/edit" element={<SuperuserRoute><ReportEditorPage /></SuperuserRoute>} />
 

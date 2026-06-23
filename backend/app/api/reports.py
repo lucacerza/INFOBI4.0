@@ -7,7 +7,7 @@ from sqlalchemy import select
 from typing import List
 from pydantic import BaseModel
 from app.db.database import get_db, Report, Connection, ReportVersion
-from app.core.deps import get_current_user, get_current_admin, get_current_superuser
+from app.core.deps import get_current_user, get_current_admin, get_current_superuser, get_current_report_viewer
 from app.core.security import decrypt_password
 from app.models.schemas import ReportCreate, ReportUpdate, ReportResponse, GridRequest, PivotDrillRequest
 from app.services.query_engine import QueryEngine, query_engine
@@ -75,9 +75,9 @@ async def test_query(
 @router.get("", response_model=List[ReportResponse])
 async def list_reports(
     db: AsyncSession = Depends(get_db),
-    user = Depends(get_current_admin)  # SECURITY: Superuser e Admin possono vedere la lista report
+    user = Depends(get_current_report_viewer)  # SECURITY: superuser, admin, data steward
 ):
-    """List all reports (SUPERUSER e ADMIN)"""
+    """List all reports (SUPERUSER, ADMIN, DATA STEWARD)"""
     result = await db.execute(select(Report).order_by(Report.name))
     return result.scalars().all()
 

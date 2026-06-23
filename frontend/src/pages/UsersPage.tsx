@@ -26,7 +26,7 @@ interface User {
   username: string;
   email: string | null;
   full_name: string | null;
-  role: 'superuser' | 'admin' | 'user';
+  role: 'superuser' | 'admin' | 'data_steward' | 'user';
   is_active: boolean;
   is_system_account?: boolean;  // true per infostudio
   report_ids?: number[];
@@ -68,7 +68,7 @@ export default function UsersPage() {
     email: '',
     full_name: '',
     password: '',
-    role: 'user' as 'superuser' | 'admin' | 'user',
+    role: 'user' as 'superuser' | 'admin' | 'data_steward' | 'user',
     is_active: true
   });
   
@@ -254,24 +254,28 @@ export default function UsersPage() {
   const ROLE_STYLE: Record<string, { label: string; color: string; bg: string }> = {
     superuser: { label: 'Superuser', color: '#A99BFF', bg: 'rgba(123,108,245,.16)' },
     admin: { label: 'Admin', color: '#F571B0', bg: 'rgba(245,113,176,.14)' },
+    data_steward: { label: 'Data Steward', color: '#4FE3C1', bg: 'rgba(79,227,193,.14)' },
     user: { label: 'Utente', color: '#9598A6', bg: 'rgba(255,255,255,.06)' },
   };
 
   const roleColors: Record<string, string> = {
     superuser: 'bg-purple-100 text-purple-700 border-purple-200',
     admin: 'bg-red-100 text-neg border-red-200',
+    data_steward: 'bg-teal-100 text-teal-700 border-teal-200',
     user: 'bg-ground text-ink border-line'
   };
 
   const roleLabels: Record<string, string> = {
     superuser: 'Superuser',
     admin: 'Amministratore',
+    data_steward: 'Data Steward',
     user: 'Utente'
   };
 
   const roleIcons: Record<string, React.ElementType> = {
     superuser: ShieldAlert,
     admin: ShieldCheck,
+    data_steward: ShieldCheck,
     user: Shield
   };
 
@@ -488,6 +492,7 @@ export default function UsersPage() {
                           <option value="user">Utente (visualizza dashboard assegnate)</option>
                           {showAllOptions && (
                             <>
+                              <option value="data_steward">Data Steward (governa il modello semantico)</option>
                               <option value="admin">Amministratore (gestisce dashboard e utenti)</option>
                               <option value="superuser">Superuser (accesso completo)</option>
                             </>

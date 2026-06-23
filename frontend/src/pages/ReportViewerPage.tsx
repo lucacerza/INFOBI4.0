@@ -28,6 +28,8 @@ export default function ReportViewerPage() {
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
   const isSuperuser = user?.role === 'superuser';
+  const isSteward = user?.role === 'data_steward';
+  const canGovern = isSuperuser || isSteward;   // gestione del semantic layer
   const reportId = parseInt(id || '0');
 
   const [report, setReport] = useState<Report | null>(null);
@@ -84,7 +86,10 @@ export default function ReportViewerPage() {
             setWhKeys((found.key_columns || []).join(', '));
           }
         }
+      }
 
+      // Semantic layer: gestito da superuser e data steward
+      if (canGovern) {
         const semRes = await apiFetch(`/api/semantic/reports/${reportId}`);
         if (semRes.ok) setSemCols(await semRes.json());
       }
@@ -425,8 +430,8 @@ export default function ReportViewerPage() {
             </div>
           )}
 
-          {/* Semantica (modello) — solo superuser */}
-          {isSuperuser && (
+          {/* Semantica (modello) — superuser e data steward */}
+          {canGovern && (
             <div className="text-left bg-surface-2 border border-line rounded-xl p-4 mb-6">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">

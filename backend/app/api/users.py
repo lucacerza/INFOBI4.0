@@ -36,7 +36,7 @@ class UserCreate(BaseModel):
     email: Optional[str] = None
     password: str
     full_name: Optional[str] = None
-    role: str = "user"  # superuser, admin, user
+    role: str = "user"  # superuser, admin, data_steward, user
 
 class UserUpdate(BaseModel):
     email: Optional[str] = None
@@ -131,7 +131,7 @@ async def create_user(
             )
 
     # Validate role
-    valid_roles = ["superuser", "admin", "user"]
+    valid_roles = ["superuser", "admin", "data_steward", "user"]
     if user_data.role not in valid_roles:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -259,7 +259,7 @@ async def update_user(
     if user_data.full_name is not None:
         user.full_name = user_data.full_name
     if user_data.role is not None:
-        valid_roles = ["superuser", "admin", "user"]
+        valid_roles = ["superuser", "admin", "data_steward", "user"]
         if user_data.role not in valid_roles:
             raise HTTPException(status_code=400, detail=f"Ruolo non valido. Usa: {', '.join(valid_roles)}")
         # SECURITY: Admin non può promuovere a ruoli superiori
