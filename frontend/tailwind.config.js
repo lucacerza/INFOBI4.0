@@ -24,6 +24,8 @@ export default {
         neg: 'var(--c-down)',
       },
       fontFamily: {
+        sans: ['"Instrument Sans"', 'system-ui', '-apple-system', '"Segoe UI"', 'Roboto', 'sans-serif'],
+        disp: ['var(--font-disp)'],
         num: ['var(--font-num)'],
       },
       borderColor: {

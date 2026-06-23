@@ -7,36 +7,39 @@
    Light = :root, Dark = .dark (toggle classe su <html>)
    ============================================================ */
 :root {
-  --c-ground: #F6F7F9;
+  /* Pulse — variante chiara */
+  --c-ground: #F4F5F8;
   --c-surface: #FFFFFF;
-  --c-surface-2: #FBFBFD;
-  --c-text: #1B2430;
-  --c-muted: #6B7480;
-  --c-border: #E7EAF0;
-  --c-accent: #4F46E5;
-  --c-accent-soft: #EEF0FE;
-  --c-accent-strong: #4338CA;
-  --c-up: #15803D;
-  --c-down: #B91C1C;
-  --font-num: ui-monospace, "Cascadia Mono", "SF Mono", "Segoe UI Mono", Consolas, monospace;
+  --c-surface-2: #FAFAFC;
+  --c-text: #16171D;
+  --c-muted: #6B7180;
+  --c-border: #E6E8EF;
+  --c-accent: #7B6CF5;
+  --c-accent-soft: #EFEDFE;
+  --c-accent-strong: #5B4FD6;
+  --c-up: #0E9F6E;
+  --c-down: #E0683C;
+  --font-num: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --font-disp: "Bricolage Grotesque", "Instrument Sans", system-ui, sans-serif;
   --scroll-track: #eef0f3;
-  --scroll-thumb: #c5cad3;
+  --scroll-thumb: #cfd3dc;
 }
 
 .dark {
-  --c-ground: #0F1420;
-  --c-surface: #161D2B;
-  --c-surface-2: #131A26;
-  --c-text: #E8ECF3;
-  --c-muted: #8A95A6;
-  --c-border: #283143;
-  --c-accent: #6366F1;
-  --c-accent-soft: #1E2440;
-  --c-accent-strong: #A5B4FC;
-  --c-up: #34D399;
-  --c-down: #F87171;
-  --scroll-track: #0f1420;
-  --scroll-thumb: #2c3750;
+  /* Pulse — dark premium (default) */
+  --c-ground: #07080C;
+  --c-surface: #15161D;
+  --c-surface-2: #0E0F15;
+  --c-text: #ECEDF2;
+  --c-muted: #9598A6;
+  --c-border: #23252F;
+  --c-accent: #7B6CF5;
+  --c-accent-soft: rgba(123, 108, 245, 0.16);
+  --c-accent-strong: #A99BFF;
+  --c-up: #4FE3C1;
+  --c-down: #F5A65B;
+  --scroll-track: #07080C;
+  --scroll-thumb: rgba(255, 255, 255, 0.12);
 }
 
 /* Base styles */
@@ -49,6 +52,7 @@ html, body, #root {
 body {
   background: var(--c-ground);
   color: var(--c-text);
+  font-family: "Instrument Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 /* Numeri/dati: monospaziato tabellare (allineamento in colonna) */

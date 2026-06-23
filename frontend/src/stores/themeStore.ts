@@ -17,11 +17,8 @@ function readStoredTheme(): Theme {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved === 'light' || saved === 'dark') return saved;
   }
-  // Default: preferenza di sistema
-  if (typeof window !== 'undefined' && window.matchMedia) {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  }
-  return 'light';
+  // Default: Pulse è dark-first
+  return 'dark';
 }
 
 interface ThemeState {
