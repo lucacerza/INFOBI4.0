@@ -23,6 +23,15 @@ const DB_TYPES = [
   { value: 'mysql', label: 'MySQL', defaultPort: 3306 }
 ];
 
+// Stile badge per tipo DB (palette Pulse)
+const DB_STYLE: Record<string, { label: string; color: string; bg: string }> = {
+  mssql: { label: 'SQL SERVER', color: '#F5A65B', bg: 'rgba(245,166,91,.14)' },
+  postgresql: { label: 'POSTGRESQL', color: '#6BD9E8', bg: 'rgba(107,217,232,.14)' },
+  mysql: { label: 'MYSQL', color: '#4FE3C1', bg: 'rgba(79,227,193,.14)' },
+};
+
+const GRADIENT_BTN = 'linear-gradient(100deg,#7B6CF5,#6A8DF5)';
+
 type ViewMode = 'list' | 'create' | 'edit';
 
 export default function ConnectionsPage() {
@@ -191,90 +200,65 @@ export default function ConnectionsPage() {
   // === VISTA LISTA ===
   if (viewMode === 'list') {
     return (
-      <div className="p-6 max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+      <div className="p-6 lg:p-8 max-w-5xl mx-auto">
+        <div className="flex items-end justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-2xl font-bold">Connessioni Database</h1>
-            <p className="text-muted">{connections.length} connessioni configurate</p>
+            <h1 className="font-disp text-[26px] font-bold tracking-tight">Sorgenti dati</h1>
+            <p className="text-muted text-sm mt-1">
+              {connections.length} {connections.length === 1 ? 'sorgente connessa' : 'sorgenti connesse'}
+            </p>
           </div>
           {connections.length > 0 && (
-            <button
-              onClick={handleCreate}
-              className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent text-white rounded-lg transition"
-            >
-              <Plus className="w-5 h-5" />
-              Nuova Connessione
+            <button onClick={handleCreate}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition hover:brightness-110"
+              style={{ background: GRADIENT_BTN }}>
+              <Plus className="w-4 h-4" /> Nuova connessione
             </button>
           )}
         </div>
-        
+
         {connections.length === 0 ? (
-          <div className="text-center py-16">
-            <Server className="w-20 h-20 mx-auto mb-4 text-gray-200" />
-            <h3 className="text-xl font-medium text-muted mb-2">Nessuna connessione</h3>
-            <p className="text-muted mb-6">Configura la tua prima connessione al database</p>
-            <button
-              onClick={handleCreate}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-accent hover:bg-accent text-white rounded-lg transition"
-            >
-              <Plus className="w-5 h-5" />
-              Nuova Connessione
+          <div className="rounded-2xl border border-line bg-surface py-16 text-center">
+            <div className="w-14 h-14 mx-auto mb-4 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(123,108,245,.14)', color: '#A99BFF' }}>
+              <Database className="w-7 h-7" />
+            </div>
+            <h3 className="text-lg font-semibold mb-1">Nessuna sorgente</h3>
+            <p className="text-muted text-sm mb-6">Collega il tuo primo database per iniziare.</p>
+            <button onClick={handleCreate}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold hover:brightness-110"
+              style={{ background: GRADIENT_BTN }}>
+              <Plus className="w-4 h-4" /> Nuova connessione
             </button>
           </div>
         ) : (
-          <div className="space-y-3">
-            {connections.map(conn => (
-              <div key={conn.id} className="bg-surface rounded-xl p-4 border flex items-center gap-4 hover:shadow-md transition">
-                <div className="w-12 h-12 rounded-lg bg-ground flex items-center justify-center flex-shrink-0">
-                  <Database className="w-6 h-6 text-muted" />
+          <div className="flex flex-col gap-3">
+            {connections.map(conn => {
+              const s = DB_STYLE[conn.db_type] || DB_STYLE.mssql;
+              return (
+                <div key={conn.id} className="bg-surface border border-line rounded-2xl p-4 flex items-center gap-4 transition hover:border-accent">
+                  <div className="w-[46px] h-[46px] flex-none rounded-xl flex items-center justify-center" style={{ background: s.bg, color: s.color }}>
+                    <Database className="w-[22px] h-[22px]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h3 className="font-semibold text-ink">{conn.name}</h3>
+                      <span className="text-[10px] font-bold tracking-wide rounded px-2 py-0.5" style={{ color: s.color, background: s.bg }}>{s.label}</span>
+                      {conn.ssl_enabled && <span className="text-[11px] font-semibold text-pos">SSL</span>}
+                    </div>
+                    <p className="num text-xs text-muted mt-1 truncate">{conn.host}:{conn.port} → {conn.database}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-none">
+                    <button onClick={() => handleTestExisting(conn.id)} disabled={testing === conn.id}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-accent-strong border border-line hover:bg-accent-soft transition disabled:opacity-50" title="Test connessione">
+                      {testing === conn.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <TestTube className="w-3.5 h-3.5" />}
+                      <span className="hidden sm:inline">Test</span>
+                    </button>
+                    <button onClick={() => handleEdit(conn)} className="w-8 h-8 flex items-center justify-center rounded-lg text-muted hover:bg-ground hover:text-ink transition" title="Modifica"><Edit className="w-4 h-4" /></button>
+                    <button onClick={() => handleDelete(conn.id)} className="w-8 h-8 flex items-center justify-center rounded-lg text-muted hover:text-neg hover:bg-ground transition" title="Elimina"><Trash2 className="w-4 h-4" /></button>
+                  </div>
                 </div>
-                
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-medium text-ink">{conn.name}</h3>
-                  <p className="text-sm text-muted truncate">
-                    <span className="inline-flex items-center px-1.5 py-0.5 bg-ground rounded text-xs font-medium mr-2">
-                      {conn.db_type.toUpperCase()}
-                    </span>
-                    {conn.host}:{conn.port} → {conn.database}
-                    {conn.ssl_enabled && <span className="ml-2 text-pos">🔒</span>}
-                  </p>
-                </div>
-                
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => handleTestExisting(conn.id)}
-                    disabled={testing === conn.id}
-                    className="flex items-center gap-1 px-3 py-1.5 text-sm hover:bg-accent-soft rounded-lg text-accent transition disabled:opacity-50"
-                    title="Test connessione"
-                  >
-                    {testing === conn.id ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <TestTube className="w-4 h-4" />
-                    )}
-                    <span className="hidden sm:inline">Test</span>
-                  </button>
-                  
-                  <button
-                    onClick={() => handleEdit(conn)}
-                    className="flex items-center gap-1 px-3 py-1.5 text-sm hover:bg-ground rounded-lg text-muted transition"
-                    title="Modifica"
-                  >
-                    <Edit className="w-4 h-4" />
-                    <span className="hidden sm:inline">Modifica</span>
-                  </button>
-                  
-                  <button
-                    onClick={() => handleDelete(conn.id)}
-                    className="flex items-center gap-1 px-3 py-1.5 text-sm hover:bg-red-50 rounded-lg text-neg transition"
-                    title="Elimina"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    <span className="hidden sm:inline">Elimina</span>
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
