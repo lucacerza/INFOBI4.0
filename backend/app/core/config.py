@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     RATE_LIMIT_RPM: int = 120              # richieste max per finestra
     RATE_LIMIT_WINDOW_SECONDS: int = 60
 
+    # Import file (Excel/CSV) -> sorgenti SQLite locali
+    IMPORTS_DIR: str = "./data/imports"
+    IMPORT_MAX_MB: int = 25
+
     # Datawarehouse (DuckDB)
     WAREHOUSE_DIR: str = "./data/warehouse"
     # Sync automatico dei dataset warehouse (ETL incrementale schedulato). Opt-in.
