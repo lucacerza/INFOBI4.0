@@ -251,6 +251,12 @@ export default function UsersPage() {
     u.email?.toLowerCase().includes(search.toLowerCase())
   );
 
+  const ROLE_STYLE: Record<string, { label: string; color: string; bg: string }> = {
+    superuser: { label: 'Superuser', color: '#A99BFF', bg: 'rgba(123,108,245,.16)' },
+    admin: { label: 'Admin', color: '#F571B0', bg: 'rgba(245,113,176,.14)' },
+    user: { label: 'Utente', color: '#9598A6', bg: 'rgba(255,255,255,.06)' },
+  };
+
   const roleColors: Record<string, string> = {
     superuser: 'bg-purple-100 text-purple-700 border-purple-200',
     admin: 'bg-red-100 text-neg border-red-200',
@@ -278,29 +284,24 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-surface-2">
+    <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="bg-surface border-b px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-accent-soft rounded-xl flex items-center justify-center">
-              <Users className="w-5 h-5 text-accent" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-ink">Gestione Utenti</h1>
-              <p className="text-sm text-muted">{users.length} utenti registrati</p>
-            </div>
+      <div className="px-6 lg:px-8 pt-6">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <h1 className="font-disp text-[26px] font-bold tracking-tight">Team</h1>
+            <p className="text-muted text-sm mt-1">{users.length} utenti · ruoli e permessi</p>
           </div>
-          
           <button
             onClick={openCreateModal}
-            className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent-strong text-white rounded-lg transition shadow-sm"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition hover:brightness-110"
+            style={{ background: 'linear-gradient(100deg,#7B6CF5,#6A8DF5)' }}
           >
             <UserPlus className="w-4 h-4" />
-            Nuovo Utente
+            Nuovo utente
           </button>
         </div>
-        
+
         {/* Search */}
         <div className="mt-4 relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
@@ -309,7 +310,7 @@ export default function UsersPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cerca utenti..."
-            className="w-full pl-10 pr-4 py-2 border rounded-lg bg-surface-2 focus:bg-surface focus:ring-2 focus:ring-accent transition"
+            className="w-full pl-10 pr-4 py-2.5 border border-line rounded-xl focus:ring-2 focus:ring-accent focus:border-transparent transition"
           />
         </div>
       </div>
@@ -317,14 +318,16 @@ export default function UsersPage() {
       {/* Users List */}
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-4xl mx-auto space-y-3">
-          {filteredUsers.map(user => (
-            <div 
+          {filteredUsers.map(user => {
+            const rs = ROLE_STYLE[user.role] || ROLE_STYLE.user;
+            return (
+            <div
               key={user.id}
-              className="bg-surface rounded-xl border p-4 hover:shadow-md transition"
+              className="bg-surface rounded-2xl border border-line p-4 hover:border-accent transition"
             >
               <div className="flex items-center gap-4">
                 {/* Avatar */}
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-lg">
+                <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg" style={{ background: 'linear-gradient(140deg,' + rs.color + ',' + rs.color + '99)' }}>
                   {user.username.charAt(0).toUpperCase()}
                 </div>
                 
@@ -347,18 +350,9 @@ export default function UsersPage() {
                 </div>
                 
                 {/* Role Badge */}
-                <div className={`px-3 py-1 rounded-full text-sm font-medium border ${roleColors[user.role] || roleColors.user}`}>
-                  <div className="flex items-center gap-1.5">
-                    {(() => {
-                      const RoleIcon = roleIcons[user.role] || Shield;
-                      return <RoleIcon className="w-3.5 h-3.5" />;
-                    })()}
-                    {roleLabels[user.role] || user.role}
-                    {user.is_system_account && (
-                      <span className="ml-1 text-xs opacity-60">(sistema)</span>
-                    )}
-                  </div>
-                </div>
+                <span className="px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap" style={{ color: rs.color, background: rs.bg }}>
+                  {rs.label}{user.is_system_account && ' · sistema'}
+                </span>
 
                 {/* Actions */}
                 <div className="flex items-center gap-1">
@@ -395,8 +389,9 @@ export default function UsersPage() {
                 </div>
               </div>
             </div>
-          ))}
-          
+            );
+          })}
+
           {filteredUsers.length === 0 && (
             <div className="text-center py-12 text-muted">
               <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
