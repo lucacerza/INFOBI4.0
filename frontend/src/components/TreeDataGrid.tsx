@@ -744,7 +744,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
              >
                  {/* STICKY HEADER */}
                  <div 
-                    className="sticky top-0 z-30 bg-ground shadow-sm flex flex-col text-gray-700 font-bold select-none"
+                    className="sticky top-0 z-30 bg-ground shadow-sm flex flex-col text-ink font-bold select-none"
                     style={{ height: `${TOTAL_HEADER_HEIGHT}px`, width: '100%', minWidth: 'fit-content' }}
                  >
                         {headerGroups.map((headerGroup, groupIndex) => (
@@ -823,7 +823,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
                                 <div 
                                     key={cell.id}
                                     data-cell-column={cell.column.id}
-                                    className={`px-2 border-r border-line flex items-center text-gray-700 ${isNumber ? 'justify-end' : 'justify-start'}`}
+                                    className={`px-2 border-r border-line flex items-center text-ink ${isNumber ? 'justify-end' : 'justify-start'}`}
                                     style={{ width: cell.column.getSize(), overflow: 'hidden', whiteSpace: 'nowrap', ...stickyStyle }}
                                 >
                                     <div className="truncate w-full">

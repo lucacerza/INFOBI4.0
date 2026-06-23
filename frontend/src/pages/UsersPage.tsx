@@ -254,7 +254,7 @@ export default function UsersPage() {
   const roleColors: Record<string, string> = {
     superuser: 'bg-purple-100 text-purple-700 border-purple-200',
     admin: 'bg-red-100 text-neg border-red-200',
-    user: 'bg-ground text-gray-700 border-line'
+    user: 'bg-ground text-ink border-line'
   };
 
   const roleLabels: Record<string, string> = {

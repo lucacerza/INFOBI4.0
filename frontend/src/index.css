@@ -57,6 +57,24 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Form control: colore/sfondo dai token così restano leggibili anche in dark.
+   In @layer base => qualsiasi utility Tailwind (bg-*, text-*) vince dove serve
+   (es. campi a tema scuro di FilterBar/BiGridConfig). */
+@layer base {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    color: var(--c-text);
+    background-color: var(--c-surface);
+    border-color: var(--c-border);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--c-muted);
+    opacity: 1;
+  }
+}
+
 /* Perspective viewer sizing */
 perspective-viewer {
   width: 100%;

@@ -458,7 +458,7 @@ export default function ConnectionsPage() {
             <button
               type="submit"
               disabled={saving}
-              className="flex items-center gap-2 px-6 py-2 bg-accent hover:bg-accent disabled:bg-blue-300 text-white rounded-lg transition"
+              className="flex items-center gap-2 px-6 py-2 bg-accent hover:bg-accent disabled:opacity-50 text-white rounded-lg transition"
             >
               {saving && <Loader2 className="w-4 h-4 animate-spin" />}
               {viewMode === 'create' ? 'Crea Connessione' : 'Salva Modifiche'}

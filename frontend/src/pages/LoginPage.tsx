@@ -20,7 +20,7 @@ export default function LoginPage() {
       await login(username, password);
       navigate('/reports');
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Credenziali non valide');
+      setError(err?.message || 'Credenziali non valide');
     } finally {
       setLoading(false);
     }
@@ -53,7 +53,7 @@ export default function LoginPage() {
           
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-ink mb-1">
                 Username
               </label>
               <input
@@ -68,7 +68,7 @@ export default function LoginPage() {
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-ink mb-1">
                 Password
               </label>
               <input
@@ -84,7 +84,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-accent hover:bg-accent disabled:bg-blue-300 text-white font-medium rounded-lg transition flex items-center justify-center gap-2"
+              className="w-full py-3 bg-accent hover:bg-accent disabled:opacity-50 text-white font-medium rounded-lg transition flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
@@ -96,10 +96,6 @@ export default function LoginPage() {
               )}
             </button>
           </form>
-          
-          <p className="mt-6 text-center text-sm text-muted">
-            Default: admin / admin
-          </p>
         </div>
       </div>
     </div>

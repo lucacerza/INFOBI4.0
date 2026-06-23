@@ -22,7 +22,10 @@ function resolveUrl(path: string): string {
   return `${BASE}${path.startsWith('/') ? path : '/' + path}`;
 }
 
-function onUnauthorized() {
+function onUnauthorized(path: string) {
+  // Un login fallito NON deve forzare reload/redirect: lo gestisce il chiamante
+  // (altrimenti la pagina si ricarica e l'utente deve riscrivere le credenziali).
+  if (path.includes('/auth/login')) return;
   localStorage.removeItem('token');
   if (window.location.pathname !== '/login') {
     window.location.href = '/login';
@@ -39,7 +42,7 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
   }
 
   const res = await fetch(resolveUrl(path), { ...options, headers });
-  if (res.status === 401) onUnauthorized();
+  if (res.status === 401) onUnauthorized(path);
   return res;
 }
 
