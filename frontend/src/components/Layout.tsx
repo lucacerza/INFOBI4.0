@@ -90,8 +90,17 @@ export default function Layout() {
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
         style={{ width: railW, minWidth: railW }}
       >
-        <div className="flex items-center justify-between px-3.5 pt-4 pb-5">
+        <div className={`px-3.5 pt-4 pb-5 flex ${collapsed ? 'flex-col items-center gap-3' : 'items-center justify-between'}`}>
           <Logo showText={!collapsed} />
+          {/* Toggle navigazione accanto al nome (desktop) */}
+          <button
+            onClick={toggleCollapse}
+            title={collapsed ? 'Espandi menu' : 'Comprimi menu'}
+            className="hidden lg:flex w-8 h-8 flex-none items-center justify-center rounded-lg text-muted hover:bg-ground hover:text-ink transition-colors"
+          >
+            {collapsed ? <ChevronRight className="w-[18px] h-[18px]" /> : <ChevronLeft className="w-[18px] h-[18px]" />}
+          </button>
+          {/* Chiudi (mobile) */}
           <button className="lg:hidden p-1 hover:bg-ground rounded text-muted" onClick={() => setSidebarOpen(false)} title="Chiudi">
             <X className="w-5 h-5" />
           </button>
@@ -118,15 +127,8 @@ export default function Layout() {
 
         {/* Bottom */}
         <div className="mt-auto flex flex-col gap-3 px-2.5 pb-4">
-          {/* Utilità: solo icone (collapse + tema) */}
-          <div className={`flex gap-1.5 ${collapsed ? 'flex-col items-center' : 'items-center'}`}>
-            <button
-              onClick={toggleCollapse}
-              title={collapsed ? 'Espandi menu' : 'Comprimi menu'}
-              className="hidden lg:flex w-9 h-9 flex-none items-center justify-center rounded-lg text-muted hover:bg-ground hover:text-ink transition-colors"
-            >
-              {collapsed ? <ChevronRight className="w-[18px] h-[18px]" /> : <ChevronLeft className="w-[18px] h-[18px]" />}
-            </button>
+          {/* Tema (solo icona) */}
+          <div className={`flex ${collapsed ? 'justify-center' : ''}`}>
             <button
               onClick={toggleTheme}
               title={theme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}

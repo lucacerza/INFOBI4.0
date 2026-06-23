@@ -95,8 +95,6 @@ export default function LoginPage() {
               )}
             </button>
           </form>
-
-          <p style={{ textAlign: 'center', fontSize: '11.5px', color: '#5A5D68', marginTop: 18 }}>Protetto · SSO aziendale · ISO 27001</p>
         </div>
       </div>
     </div>
