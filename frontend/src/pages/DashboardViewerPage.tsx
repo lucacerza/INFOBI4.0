@@ -336,10 +336,11 @@ export default function DashboardViewerPage() {
           {isAdminOrSuperuser && (
             <button
               onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent-strong text-white rounded-lg"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold transition hover:brightness-110"
+              style={{ background: 'linear-gradient(100deg,#7B6CF5,#6A8DF5)' }}
             >
               <Plus className="w-4 h-4" />
-              Aggiungi Widget
+              Aggiungi widget
             </button>
           )}
         </div>
