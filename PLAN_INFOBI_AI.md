@@ -67,8 +67,8 @@
 
 ## Fase 7 — Datawarehouse
 - [x] **Step A — DuckDB embedded + mart per-report**: file unico `data/warehouse/warehouse.duckdb` (config `WAREHOUSE_DIR`); modello `WarehouseDataset` (registro: ricetta+colonne+stato, in infobi.db backuppato → warehouse rigenerabile); `services/warehouse.py` (materialize_df / materialize_from_source / query_arrow / drop_table); API superuser `/api/warehouse` (from-report, list, refresh, rebuild-all, delete); fix sqlite in `engine_pool` (chiave senza host/user/port). Test: `tests/test_warehouse.py` (5, verde).
-- [ ] Catalogo schema per connessione (introspezione tabelle/colonne/tipi/relazioni) — base conoscitiva per l'AI
-- [ ] Metadati semantici su report/colonne (nome business, descrizione, unità, formato, misura/dimensione, aggregazione default)
+- [x] **Catalogo schema (introspezione live)**: `services/schema_catalog.py` (tabelle/viste/colonne/tipi/PK/FK via SQLAlchemy Inspector, dialetto-agnostico) + API superuser `/api/catalog/connections/{id}/tables[/{table}]`. Fatti tecnici sempre aggiornati, non persistiti.
+- [x] **Metadati semantici (semantic layer)**: modello `ColumnMetadata` (report_id+column unici: nome business, descrizione, role dimension/measure/time/attribute, data_type, unit, format, default_aggregation, is_hidden, `extra` JSON estendibile); `services/semantic.py` con autodetect (number→measure/sum, date o nome temporale→time, resto→dimension) che NON sovrascrive l'arricchimento umano; API `/api/semantic/reports/{id}` (list/autodetect/update); UI: pannello *Semantica* nel ReportViewer (superuser) con auto-rileva + editing inline (nome business, ruolo, aggregazione, unità). Test: `test_catalog_semantic.py` (5).
 - [ ] DuckDB + Parquet, architettura medallion (bronze/silver/gold)
 - [ ] ETL incrementale schedulato (APScheduler, watermark `updated_at`)
 - [ ] Semantic layer (misure/dimensioni riusabili)

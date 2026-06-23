@@ -7,7 +7,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import {
   ArrowLeft, Download, RefreshCw, Loader2, FileSpreadsheet,
-  FileText, Clock, Database, Zap, Edit, LayoutGrid, Boxes
+  FileText, Clock, Database, Zap, Edit, LayoutGrid, Boxes, Tags, Sparkles
 } from 'lucide-react';
 import { apiFetch } from '../services/apiClient';
 
@@ -40,6 +40,10 @@ export default function ReportViewerPage() {
   const [whBacked, setWhBacked] = useState(false);
   const [whBusy, setWhBusy] = useState(false);
 
+  // Semantic layer state
+  const [semCols, setSemCols] = useState<any[]>([]);
+  const [semBusy, setSemBusy] = useState(false);
+
   // Load on mount
   useEffect(() => {
     if (id) {
@@ -66,6 +70,9 @@ export default function ReportViewerPage() {
           const datasets = await whRes.json();
           setWhDataset(datasets.find((d: any) => d.source_report_id === reportId) || null);
         }
+
+        const semRes = await apiFetch(`/api/semantic/reports/${reportId}`);
+        if (semRes.ok) setSemCols(await semRes.json());
       }
 
     } catch (err: any) {
@@ -109,6 +116,38 @@ export default function ReportViewerPage() {
     } finally {
       setWhBusy(false);
     }
+  };
+
+  // Semantic: auto-rileva ruoli/tipi/aggregazioni dalle colonne reali
+  const handleAutodetect = async () => {
+    setSemBusy(true);
+    try {
+      const res = await apiFetch(`/api/semantic/reports/${reportId}/autodetect`, { method: 'POST' });
+      if (!res.ok) throw new Error((await res.json()).detail || 'Errore');
+      setSemCols(await res.json());
+    } catch (err: any) {
+      alert(`Auto-rilevamento fallito: ${err.message}`);
+    } finally {
+      setSemBusy(false);
+    }
+  };
+
+  // Aggiorna localmente un campo (per input controllati prima del salvataggio)
+  const setSemLocal = (column: string, field: string, value: any) =>
+    setSemCols(cs => cs.map(c => (c.column_name === column ? { ...c, [field]: value } : c)));
+
+  // Salva una modifica semantica sul backend
+  const patchSem = async (column: string, patch: Record<string, any>) => {
+    try {
+      const res = await apiFetch(`/api/semantic/reports/${reportId}/columns/${encodeURIComponent(column)}`, {
+        method: 'PUT',
+        body: JSON.stringify(patch),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setSemCols(cs => cs.map(c => (c.column_name === column ? updated : c)));
+      }
+    } catch { /* errore di rete: lascia lo stato locale */ }
   };
 
   const handleRefresh = async () => {
@@ -310,6 +349,84 @@ export default function ReportViewerPage() {
                   {whBacked ? 'Query sul warehouse: attivo' : 'Interroga il warehouse'}
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* Semantica (modello) — solo superuser */}
+          {isSuperuser && (
+            <div className="text-left bg-surface-2 border border-line rounded-xl p-4 mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Tags className="w-4 h-4 text-accent" />
+                  <span className="font-semibold text-ink text-sm">Semantica</span>
+                  {semCols.length > 0 && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-ground text-muted num">
+                      {semCols.length} colonne
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={handleAutodetect}
+                  disabled={semBusy}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border border-line text-muted hover:bg-ground disabled:opacity-50"
+                >
+                  {semBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  {semCols.length > 0 ? 'Ri-rileva' : 'Auto-rileva'}
+                </button>
+              </div>
+
+              {semCols.length === 0 ? (
+                <p className="text-xs text-muted">
+                  Definisci misure, dimensioni e formati: la base per dashboard più chiare e per l'AI.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
+                  {semCols.map(c => (
+                    <div key={c.column_name} className="flex items-center gap-2 flex-wrap">
+                      <span className="num text-xs px-2 py-1 rounded bg-ground text-muted shrink-0 min-w-[7rem]">
+                        {c.column_name}
+                      </span>
+                      <input
+                        value={c.business_name || ''}
+                        placeholder="Nome business"
+                        onChange={e => setSemLocal(c.column_name, 'business_name', e.target.value)}
+                        onBlur={() => patchSem(c.column_name, { business_name: c.business_name })}
+                        className="flex-1 min-w-[8rem] px-2 py-1 text-sm border border-line rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent"
+                      />
+                      <select
+                        value={c.role}
+                        onChange={e => patchSem(c.column_name, { role: e.target.value })}
+                        className="px-2 py-1 text-sm border border-line rounded-lg bg-surface"
+                      >
+                        <option value="dimension">dimensione</option>
+                        <option value="measure">misura</option>
+                        <option value="time">tempo</option>
+                        <option value="attribute">attributo</option>
+                      </select>
+                      <select
+                        value={c.default_aggregation}
+                        onChange={e => patchSem(c.column_name, { default_aggregation: e.target.value })}
+                        className="px-2 py-1 text-sm border border-line rounded-lg bg-surface num"
+                        title="Aggregazione di default"
+                      >
+                        <option value="none">—</option>
+                        <option value="sum">somma</option>
+                        <option value="avg">media</option>
+                        <option value="count">conteggio</option>
+                        <option value="min">min</option>
+                        <option value="max">max</option>
+                      </select>
+                      <input
+                        value={c.unit || ''}
+                        placeholder="unità"
+                        onChange={e => setSemLocal(c.column_name, 'unit', e.target.value)}
+                        onBlur={() => patchSem(c.column_name, { unit: c.unit })}
+                        className="w-16 px-2 py-1 text-sm border border-line rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent num"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

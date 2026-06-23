@@ -1,7 +1,7 @@
 """Database models and initialization"""
 import logging
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, JSON, ForeignKey, Table
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, JSON, ForeignKey, Table, UniqueConstraint
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base, relationship
 from app.core.config import settings
@@ -196,6 +196,33 @@ class WarehouseDataset(Base):
     last_error = Column(Text)
     last_sync_at = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+# ============================================
+# SEMANTIC LAYER - metadati semantici per colonna (base per l'AI)
+# ============================================
+class ColumnMetadata(Base):
+    """
+    Metadati semantici di una colonna di un report (il "modello" delle BI:
+    misure/dimensioni, nome business, unità, formato). Arricchimento umano/AI,
+    separato dai fatti tecnici (lo schema fisico è introspezione live).
+    """
+    __tablename__ = "column_metadata"
+    __table_args__ = (UniqueConstraint("report_id", "column_name", name="uq_colmeta_report_column"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    report_id = Column(Integer, ForeignKey("reports.id", ondelete="CASCADE"), nullable=False, index=True)
+    column_name = Column(String(255), nullable=False)        # colonna fisica nel risultato del report
+    business_name = Column(String(255))                      # nome leggibile (es. "Fatturato netto")
+    description = Column(Text)                                # descrizione per l'utente/AI
+    role = Column(String(32), default="dimension")           # dimension | measure | time | attribute
+    data_type = Column(String(32), default="string")         # string | number | date (semantico)
+    unit = Column(String(32))                                # es. "€", "pz", "%"
+    format = Column(String(64))                              # es. "#,##0.00", "0%", "dd/mm/yyyy"
+    default_aggregation = Column(String(16), default="none") # sum | avg | count | min | max | none
+    is_hidden = Column(Boolean, default=False)               # escludi da UI/AI
+    extra = Column(JSON, default={})                         # estensibilità: sinonimi NL, FK target, ecc.
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 # ============================================
 # AUDIT LOG
