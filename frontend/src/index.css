@@ -79,6 +79,13 @@ body {
   }
 }
 
+/* Input "vetro" della login Pulse (stile fisso scuro, indipendente dal tema) */
+.pulse-input:focus {
+  border-color: #7B6CF5 !important;
+  box-shadow: 0 0 0 4px rgba(123, 108, 245, 0.18);
+}
+.pulse-input::placeholder { color: #6B6E7A; }
+
 /* Perspective viewer sizing */
 perspective-viewer {
   width: 100%;

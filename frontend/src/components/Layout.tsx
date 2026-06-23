@@ -117,26 +117,26 @@ export default function Layout() {
         </nav>
 
         {/* Bottom */}
-        <div className="mt-auto flex flex-col gap-1.5 px-2.5 pb-4">
-          <button
-            onClick={toggleCollapse}
-            title={collapsed ? 'Espandi' : 'Comprimi'}
-            className={`hidden lg:flex items-center gap-3 rounded-xl py-2.5 text-sm font-medium text-muted hover:bg-ground hover:text-ink transition-colors ${collapsed ? 'px-0 justify-center' : 'px-3'}`}
-          >
-            {collapsed ? <ChevronRight className="w-[18px] h-[18px]" /> : <ChevronLeft className="w-[18px] h-[18px]" />}
-            {!collapsed && <span className="whitespace-nowrap">Comprimi</span>}
-          </button>
+        <div className="mt-auto flex flex-col gap-3 px-2.5 pb-4">
+          {/* Utilità: solo icone (collapse + tema) */}
+          <div className={`flex gap-1.5 ${collapsed ? 'flex-col items-center' : 'items-center'}`}>
+            <button
+              onClick={toggleCollapse}
+              title={collapsed ? 'Espandi menu' : 'Comprimi menu'}
+              className="hidden lg:flex w-9 h-9 flex-none items-center justify-center rounded-lg text-muted hover:bg-ground hover:text-ink transition-colors"
+            >
+              {collapsed ? <ChevronRight className="w-[18px] h-[18px]" /> : <ChevronLeft className="w-[18px] h-[18px]" />}
+            </button>
+            <button
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}
+              className="w-9 h-9 flex-none flex items-center justify-center rounded-lg text-muted hover:bg-ground hover:text-ink transition-colors"
+            >
+              {theme === 'dark' ? <Sun className="w-[18px] h-[18px]" /> : <Moon className="w-[18px] h-[18px]" />}
+            </button>
+          </div>
 
-          <button
-            onClick={toggleTheme}
-            title={theme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}
-            className={`flex items-center gap-3 rounded-xl py-2.5 text-sm font-medium text-muted hover:bg-ground hover:text-ink transition-colors ${collapsed ? 'px-0 justify-center' : 'px-3'}`}
-          >
-            {theme === 'dark' ? <Sun className="w-[18px] h-[18px]" /> : <Moon className="w-[18px] h-[18px]" />}
-            {!collapsed && <span className="whitespace-nowrap">{theme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}</span>}
-          </button>
-
-          <div className={`flex items-center gap-2.5 pt-3 mt-1 border-t border-line ${collapsed ? 'justify-center' : ''}`}>
+          <div className={`flex items-center gap-2.5 pt-3 border-t border-line ${collapsed ? 'justify-center' : ''}`}>
             <div
               className="w-[34px] h-[34px] flex-none rounded-full flex items-center justify-center text-white font-bold text-sm"
               style={{ background: 'linear-gradient(140deg,#7B6CF5,#F571B0)' }}
