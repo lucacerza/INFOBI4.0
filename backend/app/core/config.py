@@ -42,6 +42,9 @@ class Settings(BaseSettings):
 
     # Datawarehouse (DuckDB)
     WAREHOUSE_DIR: str = "./data/warehouse"
+    # Sync automatico dei dataset warehouse (ETL incrementale schedulato). Opt-in.
+    WAREHOUSE_SYNC_ENABLED: bool = False
+    WAREHOUSE_SYNC_INTERVAL_HOURS: int = 6
 
     # Semantic layer: parole-indizio per riconoscere le colonne temporali
     # nell'autodetect. È solo un SUGGERIMENTO (ogni colonna resta correggibile

@@ -14,10 +14,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
-from app.db.database import get_db, Report, Connection, WarehouseDataset
+from app.db.database import get_db, Report, WarehouseDataset
 from app.core.deps import get_current_superuser
-from app.core.security import decrypt_password
-from app.services import warehouse, backup
+from app.services import warehouse, backup, warehouse_sync
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +31,10 @@ class DatasetResponse(BaseModel):
     source_report_id: Optional[int] = None
     row_count: int
     status: str
+    sync_mode: str = "full"
+    watermark_column: Optional[str] = None
+    last_watermark: Optional[str] = None
+    key_columns: list = []
     last_error: Optional[str] = None
     last_sync_at: Optional[datetime] = None
     columns: list = []
@@ -43,52 +46,20 @@ class DatasetResponse(BaseModel):
 class CreateFromReport(BaseModel):
     report_id: int
     name: Optional[str] = None
+    sync_mode: Optional[str] = None              # full | incremental
+    watermark_column: Optional[str] = None
+    key_columns: Optional[list] = None
 
 
 # ---------- Helper ----------
-def _config_of(connection: Connection) -> dict:
-    return {
-        "host": connection.host,
-        "port": connection.port,
-        "database": connection.database,
-        "username": connection.username,
-        "password": decrypt_password(connection.password_encrypted),
-        "ssl_enabled": connection.ssl_enabled,
-    }
-
-
 async def _materialize(db: AsyncSession, ds: WarehouseDataset) -> WarehouseDataset:
-    """Estrae dalla sorgente e (ri)materializza la tabella. Aggiorna stato/errore/righe."""
-    connection = (await db.execute(
-        select(Connection).where(Connection.id == ds.source_connection_id)
-    )).scalar_one_or_none()
-    if not connection:
-        raise HTTPException(status_code=400, detail="Connessione sorgente non trovata")
-
-    ds.status = "syncing"
-    ds.last_error = None
-    await db.commit()
-
+    """(Ri)materializza il dataset (full o incrementale) traducendo gli errori in HTTP."""
     try:
-        config = _config_of(connection)
-        row_count, columns = await run_in_threadpool(
-            warehouse.materialize_from_source,
-            ds.table_name, connection.db_type, config, ds.source_query,
-        )
-        ds.row_count = row_count
-        ds.columns = columns
-        ds.status = "ready"
-        ds.last_sync_at = datetime.utcnow()
+        return await warehouse_sync.sync_dataset(db, ds)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.exception("Materializzazione fallita per dataset %s", ds.id)
-        ds.status = "error"
-        ds.last_error = str(e)
-        await db.commit()
         raise HTTPException(status_code=400, detail=f"Materializzazione fallita: {e}")
-
-    await db.commit()
-    await db.refresh(ds)
-    return ds
 
 
 # ---------- Endpoint ----------
@@ -117,6 +88,11 @@ async def create_from_report(
     if not report:
         raise HTTPException(status_code=404, detail="Report non trovato")
 
+    if data.sync_mode is not None and data.sync_mode not in ("full", "incremental"):
+        raise HTTPException(status_code=400, detail="sync_mode non valido (full|incremental)")
+    if data.sync_mode == "incremental" and not (data.watermark_column or "").strip():
+        raise HTTPException(status_code=400, detail="La modalità incrementale richiede watermark_column")
+
     table_name = warehouse.sanitize_table(f"mart_report_{report.id}")
 
     # Un dataset per report (riusa se esiste)
@@ -130,6 +106,9 @@ async def create_from_report(
             source_connection_id=report.connection_id,
             source_report_id=report.id,
             source_query=report.query,
+            sync_mode=data.sync_mode or "full",
+            watermark_column=data.watermark_column,
+            key_columns=data.key_columns or [],
         )
         db.add(ds)
         await db.commit()
@@ -140,6 +119,12 @@ async def create_from_report(
         ds.source_connection_id = report.connection_id
         if data.name:
             ds.name = data.name
+        if data.sync_mode is not None:
+            ds.sync_mode = data.sync_mode
+        if data.watermark_column is not None:
+            ds.watermark_column = data.watermark_column
+        if data.key_columns is not None:
+            ds.key_columns = data.key_columns
         await db.commit()
 
     return await _materialize(db, ds)
