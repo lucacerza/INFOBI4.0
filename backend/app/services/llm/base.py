@@ -64,6 +64,7 @@ class LLMProvider(abc.ABC):
         system: str = "",
         messages: List[Dict[str, Any]],
         tools: Optional[List[ToolSpec]] = None,
+        tool_choice: Optional[Dict[str, Any]] = None,
         max_tokens: int = 1024,
         temperature: float = 0.0,
     ) -> LLMResponse:

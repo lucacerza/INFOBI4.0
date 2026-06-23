@@ -16,7 +16,7 @@ import TreeDataGrid from '../components/TreeDataGrid';
 import BiGridConfig from '../components/BiGridConfig';
 import {
   ArrowLeft, Download, Settings, Loader2,
-  ChevronRight, Save, LayoutGrid, Edit
+  ChevronRight, Save, LayoutGrid, Edit, Sparkles
 } from 'lucide-react';
 
 interface ColumnInfo {
@@ -59,6 +59,11 @@ export default function ReportPivotPage() {
     orderBy: [],
     filters: []
   });
+
+  // NL -> Pivot (AI)
+  const [aiQuestion, setAiQuestion] = useState('');
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiMsg, setAiMsg] = useState<{ type: 'info' | 'error'; text: string } | null>(null);
 
   // Load report and schema
   useEffect(() => {
@@ -134,6 +139,50 @@ export default function ReportPivotPage() {
     setPivotConfig(newConfig);
   };
 
+  // Applica una config prodotta dall'AI alla pivot (stessa forma di setPivotConfig)
+  const applyAiConfig = (cfg: any) => {
+    setPivotConfig({
+      rows: cfg.group_by || [],
+      columns: cfg.split_by || [],
+      values: (cfg.metrics || []).map((m: any, i: number) => ({
+        id: `ai-${i}`,
+        name: m.name,
+        field: m.field,
+        aggregation: m.aggregation,
+      })),
+      orderBy: [],
+      filters: Object.entries(cfg.filters || {}).map(([field, def]: [string, any]) => ({
+        field,
+        type: def.type,
+        value: def.value ?? def.values,
+      })),
+      having: [],
+    });
+  };
+
+  const handleAsk = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = aiQuestion.trim();
+    if (!q) return;
+    setAiBusy(true);
+    setAiMsg(null);
+    try {
+      const res = await apiFetch(`/api/ai/reports/${reportId}/ask`, {
+        method: 'POST',
+        body: JSON.stringify({ question: q }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Errore AI');
+      applyAiConfig(data.config);
+      setShowBuilder(true);
+      setAiMsg({ type: 'info', text: data.explanation || 'Configurazione applicata.' });
+    } catch (err: any) {
+      setAiMsg({ type: 'error', text: err.message });
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center bg-surface-2">
@@ -189,6 +238,31 @@ export default function ReportPivotPage() {
           )}
         </div>
       </div>
+
+      {/* Barra AI: domanda in linguaggio naturale -> pivot */}
+      <form onSubmit={handleAsk} className="bg-surface border-b px-4 py-2 flex items-center gap-2 flex-shrink-0">
+        <Sparkles className="w-4 h-4 text-accent shrink-0" />
+        <input
+          value={aiQuestion}
+          onChange={e => setAiQuestion(e.target.value)}
+          placeholder="Chiedi in linguaggio naturale: es. «fatturato per regione»"
+          className="flex-1 px-3 py-1.5 text-sm border border-line rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent"
+        />
+        {aiMsg && (
+          <span className={`text-xs truncate max-w-[40%] ${aiMsg.type === 'error' ? 'text-neg' : 'text-muted'}`}>
+            {aiMsg.text}
+          </span>
+        )}
+        <button
+          type="submit"
+          disabled={aiBusy || !aiQuestion.trim()}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-sm font-semibold disabled:opacity-50 hover:brightness-110 shrink-0"
+          style={{ background: 'linear-gradient(100deg,#7B6CF5,#6A8DF5)' }}
+        >
+          {aiBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+          Chiedi
+        </button>
+      </form>
 
       <div className="flex-1 flex overflow-hidden">
         {/* Compact Config Sidebar */}

@@ -78,7 +78,7 @@
 ## Fase 8 — AI (Claude)
 - [x] **8.1 — Astrazione LLM (resilienza 529 + provider-agnostico)**: pacchetto `services/llm/` con interfaccia `LLMProvider` (tool-use), `ResilientLLM` (retry+backoff esponenziale su 429/529/5xx, fallback opzionale a 2° modello), provider Anthropic (httpx, classifica errori transitori/permanenti) + Mock (offline/test); factory `get_llm()` da config (`auto`→anthropic se c'è la key, altrimenti mock); config `LLM_*` (provider/model/key/base_url/fallback/retry/timeout — predisposto a LiteLLM/Ollama via `LLM_BASE_URL`); endpoint `/api/ai/status` (superuser). Test `test_llm.py` (12: retry/esaurimento/fallback/factory/endpoint).
 - [ ] Guardrail & governance AI: whitelist metriche/colonne certificate; logging traduzioni NL→query; feedback loop utente (blocca allucinazioni e SQLi by-design)
-- [ ] NL → Pivot (tool-use, config validata, non SQL grezzo)
+- [x] **8.2 — NL → Pivot (tool-use, config validata)**: `services/nl_pivot.py` — grounding dal semantic layer (`ColumnMetadata`, fallback schema), tool `build_pivot` (group_by/split_by/metrics/filters) forzato via `tool_choice`, **guardrail anti-allucinazione** (risolve nome tecnico o business; rifiuta colonne inesistenti); output nella forma `EnhancedPivotRequest`. Endpoint `POST /api/ai/reports/{id}/ask` → `{config, explanation}` (422 su colonna inventata, 503 se AI down). UI: barra "Chiedi all'AI" nel ReportPivotPage che applica la config a `setPivotConfig` (motore pivot invariato). Test `test_nl_pivot.py` (9: mapping, nomi business, guardrail, filtri, endpoint e2e con MockLLM).
 - [ ] NL → generazione Dashboard (JSON widget)
 - [ ] Auto-insight / narrazione su dati aggregati
 - [ ] Anomaly detection + alert

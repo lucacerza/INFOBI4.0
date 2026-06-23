@@ -32,6 +32,7 @@ class AnthropicLLM(LLMProvider):
         system: str = "",
         messages: List[Dict[str, Any]],
         tools: Optional[List[ToolSpec]] = None,
+        tool_choice: Optional[Dict[str, Any]] = None,
         max_tokens: int = 1024,
         temperature: float = 0.0,
     ) -> LLMResponse:
@@ -48,6 +49,8 @@ class AnthropicLLM(LLMProvider):
                 {"name": t.name, "description": t.description, "input_schema": t.input_schema}
                 for t in tools
             ]
+            if tool_choice:
+                payload["tool_choice"] = tool_choice
 
         headers = {
             "x-api-key": self.api_key,
