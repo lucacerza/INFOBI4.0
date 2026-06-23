@@ -76,6 +76,7 @@
 - [ ] Data lineage / freschezza per widget
 
 ## Fase 8 — AI (Claude)
+- [x] **8.1 — Astrazione LLM (resilienza 529 + provider-agnostico)**: pacchetto `services/llm/` con interfaccia `LLMProvider` (tool-use), `ResilientLLM` (retry+backoff esponenziale su 429/529/5xx, fallback opzionale a 2° modello), provider Anthropic (httpx, classifica errori transitori/permanenti) + Mock (offline/test); factory `get_llm()` da config (`auto`→anthropic se c'è la key, altrimenti mock); config `LLM_*` (provider/model/key/base_url/fallback/retry/timeout — predisposto a LiteLLM/Ollama via `LLM_BASE_URL`); endpoint `/api/ai/status` (superuser). Test `test_llm.py` (12: retry/esaurimento/fallback/factory/endpoint).
 - [ ] Guardrail & governance AI: whitelist metriche/colonne certificate; logging traduzioni NL→query; feedback loop utente (blocca allucinazioni e SQLi by-design)
 - [ ] NL → Pivot (tool-use, config validata, non SQL grezzo)
 - [ ] NL → generazione Dashboard (JSON widget)

@@ -52,6 +52,18 @@ class Settings(BaseSettings):
         "giorno", "day", "periodo", "trimestre", "quarter", "settimana", "week",
     ]
 
+    # AI / LLM. Provider-agnostico con resilienza al sovraccarico (HTTP 529).
+    # LLM_PROVIDER: auto (anthropic se c'è la key, altrimenti mock) | anthropic | mock
+    # LLM_BASE_URL: override per gateway compatibili (LiteLLM/Ollama) — predisposto.
+    LLM_PROVIDER: str = "auto"
+    LLM_MODEL: str = "claude-opus-4-8"
+    LLM_API_KEY: str = ""
+    LLM_BASE_URL: str = ""
+    LLM_FALLBACK_MODEL: str = ""        # modello di ripiego (stesso provider)
+    LLM_MAX_RETRIES: int = 3            # ritenta gli errori transitori (429/529/5xx)
+    LLM_RETRY_BASE_DELAY: float = 0.5   # backoff esponenziale: base * 2**tentativo
+    LLM_TIMEOUT: int = 60
+
     # Backup automatico del DB applicativo (SQLite)
     BACKUP_ENABLED: bool = True
     BACKUP_DIR: str = "./data/backups"
