@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from app.db.database import get_db, Report, AITranslationLog, Dashboard, DashboardWidget
 from app.core.deps import get_current_user, get_current_admin, get_current_superuser
-from app.services import llm, nl_pivot, insights, ai_log, nl_dashboard
+from app.services import llm, nl_pivot, insights, ai_log, nl_dashboard, anomaly
 from app.services.llm.base import LLMError
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,14 @@ class FeedbackRequest(BaseModel):
 
 class DashboardRequest(BaseModel):
     description: str
+
+
+class AnomalyRequest(BaseModel):
+    group_by: List[str]
+    metric: Dict[str, Any]                 # {field, aggregation, name?}
+    filters: Dict[str, Any] = {}
+    method: str = "zscore"                 # zscore | iqr
+    threshold: float = 3.0
 
 
 def _elapsed_ms(start: float) -> int:
@@ -202,6 +210,28 @@ async def ai_dashboard(
         "widget_count": len(spec["widgets"]),
         "widgets": spec["widgets"],
     }
+
+
+@router.post("/reports/{report_id}/anomalies")
+async def report_anomalies(
+    report_id: int,
+    data: AnomalyRequest,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Rileva valori anomali (z-score/IQR) della misura per le dimensioni scelte."""
+    report = (await db.execute(select(Report).where(Report.id == report_id))).scalar_one_or_none()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report non trovato")
+    if data.method not in ("zscore", "iqr"):
+        raise HTTPException(status_code=400, detail="Metodo non valido (zscore|iqr)")
+
+    try:
+        return await anomaly.analyze(
+            db, report, data.group_by, data.metric, data.filters, data.method, data.threshold
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.get("/logs")

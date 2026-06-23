@@ -16,7 +16,7 @@ import TreeDataGrid from '../components/TreeDataGrid';
 import BiGridConfig from '../components/BiGridConfig';
 import {
   ArrowLeft, Download, Settings, Loader2,
-  ChevronRight, Save, LayoutGrid, Edit, Sparkles, Lightbulb, X, ThumbsUp, ThumbsDown
+  ChevronRight, Save, LayoutGrid, Edit, Sparkles, Lightbulb, X, ThumbsUp, ThumbsDown, AlertTriangle
 } from 'lucide-react';
 
 interface ColumnInfo {
@@ -68,6 +68,7 @@ export default function ReportPivotPage() {
   const [insightBusy, setInsightBusy] = useState(false);
   const [aiLogId, setAiLogId] = useState<number | null>(null);
   const [feedbackGiven, setFeedbackGiven] = useState(false);
+  const [anomBusy, setAnomBusy] = useState(false);
 
   // Load report and schema
   useEffect(() => {
@@ -197,6 +198,42 @@ export default function ReportPivotPage() {
     }
   };
 
+  // Rileva anomalie statistiche sulla prima misura della vista
+  const handleAnomalies = async () => {
+    if (!pivotConfig.rows.length || !pivotConfig.values.length) {
+      setAiMsg({ type: 'error', text: 'Servono almeno una riga (dimensione) e una misura' });
+      return;
+    }
+    setAnomBusy(true);
+    setInsight(null);
+    try {
+      const m = pivotConfig.values[0];
+      const res = await apiFetch(`/api/ai/reports/${reportId}/anomalies`, {
+        method: 'POST',
+        body: JSON.stringify({
+          group_by: pivotConfig.rows,
+          metric: { field: m.field, aggregation: m.aggregation, name: m.name },
+          method: 'zscore',
+          threshold: 3.0,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Errore');
+      if (!data.count) {
+        setInsight(`Nessuna anomalia su «${data.metric}» (media ${data.mean}, dev. std ${data.std}).`);
+      } else {
+        const lines = data.anomalies.slice(0, 10)
+          .map((a: any) => `• ${a.label}: ${a.value} (${a.direction === 'high' ? '↑' : '↓'} z=${a.score})`)
+          .join('\n');
+        setInsight(`${data.count} anomalie su «${data.metric}» (media ${data.mean}, dev. std ${data.std}):\n${lines}`);
+      }
+    } catch (err: any) {
+      setAiMsg({ type: 'error', text: err.message });
+    } finally {
+      setAnomBusy(false);
+    }
+  };
+
   const handleAsk = async (e: React.FormEvent) => {
     e.preventDefault();
     const q = aiQuestion.trim();
@@ -273,6 +310,17 @@ export default function ReportPivotPage() {
           >
             {insightBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lightbulb className="w-4 h-4" />}
             Insight
+          </button>
+
+          {/* Anomalie */}
+          <button
+            onClick={handleAnomalies}
+            disabled={anomBusy}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-ground text-muted hover:bg-line transition disabled:opacity-50"
+            title="Rileva valori anomali sulla prima misura"
+          >
+            {anomBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <AlertTriangle className="w-4 h-4" />}
+            Anomalie
           </button>
 
           {/* Toggle Builder */}
