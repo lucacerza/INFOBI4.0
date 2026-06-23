@@ -751,7 +751,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
                             <div key={headerGroup.id} className="flex" style={{ height: HEADER_ROW_HEIGHT }}>
                                 {headerGroup.headers.map((header) => {
                                      // Uniform styling for all headers as requested
-                                     const borderClass = "border-r border-b border-gray-300 bg-ground";
+                                     const borderClass = "border-r border-b border-line bg-ground";
                                      
                                      // Sticky group column logic
                                      const isGroupCol = header.column.id === 'group';
@@ -761,8 +761,8 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
 
                                      // User Request: Remove horizontal separator (border-b) but keep vertical (border-r) for Group Column
                                      const cellBorderClass = isGroupCol 
-                                        ? "border-r border-gray-300 bg-ground" // kept vertical, removed horizontal (border-b)
-                                        : "border-r border-b border-gray-300 bg-ground";
+                                        ? "border-r border-line bg-ground" // kept vertical, removed horizontal (border-b)
+                                        : "border-r border-b border-line bg-ground";
 
                                      return (
                                     <div 
@@ -778,7 +778,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
                                         <div
                                             onMouseDown={header.getResizeHandler()}
                                             onTouchStart={header.getResizeHandler()}
-                                            className={`absolute right-0 top-0 h-full w-1 cursor-col-resize touch-none hover:bg-blue-400 opacity-0 group-hover:opacity-100 ${
+                                            className={`absolute right-0 top-0 h-full w-1 cursor-col-resize touch-none hover:bg-accent opacity-0 group-hover:opacity-100 ${
                                                 header.column.getIsResizing() ? 'bg-accent opacity-100' : ''
                                             }`}
                                         />
@@ -791,7 +791,7 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
 
                  {/* LOADING OVERLAY */}
                  {isLoading && (
-                     <div className="absolute inset-0 flex items-center justify-center bg-white/60 z-20 h-40 mt-8">
+                     <div className="absolute inset-0 flex items-center justify-center z-20 h-40 mt-8" style={{ background: 'rgba(0,0,0,0.35)' }}>
                          <Loader2 className="animate-spin text-accent" size={24} />
                      </div>
                  )}
@@ -816,14 +816,14 @@ export default function TreeDataGrid({ reportId, rowGroups, valueCols, pivotCols
                                 // Sticky body cell logic
                                 const isGroupCol = cell.column.id === 'group';
                                 const stickyStyle = (rowGroups.length > 0 && isGroupCol)
-                                    ? { position: 'sticky' as const, left: 0, zIndex: 20, backgroundColor: row.getIsExpanded() ? '#f9fafb' : '#ffffff' }
+                                    ? { position: 'sticky' as const, left: 0, zIndex: 20, backgroundColor: row.getIsExpanded() ? 'var(--c-ground)' : 'var(--c-surface)' }
                                     : {};
 
                                 return (
                                 <div 
                                     key={cell.id}
                                     data-cell-column={cell.column.id}
-                                    className={`px-2 border-r border-line flex items-center text-ink ${isNumber ? 'justify-end' : 'justify-start'}`}
+                                    className={`px-2 border-r border-line flex items-center text-ink ${isNumber ? 'justify-end num' : 'justify-start'}`}
                                     style={{ width: cell.column.getSize(), overflow: 'hidden', whiteSpace: 'nowrap', ...stickyStyle }}
                                 >
                                     <div className="truncate w-full">

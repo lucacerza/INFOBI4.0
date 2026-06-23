@@ -154,11 +154,11 @@ export default function ReportPivotPage() {
             <ArrowLeft className="w-5 h-5 text-muted" />
           </Link>
           <div>
-            <h1 className="font-semibold text-ink flex items-center gap-2">
+            <h1 className="font-disp font-bold text-lg tracking-tight text-ink flex items-center gap-2">
               <LayoutGrid className="w-5 h-5 text-accent" />
-              {report?.name || 'Pivot Table'}
+              {report?.name || 'Pivot'}
             </h1>
-            <p className="text-xs text-muted">Gerarchia multi-livello con BiGrid</p>
+            <p className="text-xs text-muted">Pivot · gerarchia multi-livello</p>
           </div>
         </div>
 
@@ -169,7 +169,7 @@ export default function ReportPivotPage() {
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${
               showBuilder
                 ? 'bg-accent-soft text-accent-strong'
-                : 'bg-ground text-muted hover:bg-slate-200'
+                : 'bg-ground text-muted hover:bg-line'
             }`}
           >
             <Settings className="w-4 h-4" />
@@ -180,7 +180,8 @@ export default function ReportPivotPage() {
           {user?.role === 'superuser' && (
             <Link
               to={`/reports/${reportId}/edit`}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-purple-600 hover:bg-purple-700 text-white transition"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold text-white transition hover:brightness-110"
+              style={{ background: 'linear-gradient(100deg,#7B6CF5,#6A8DF5)' }}
             >
               <Edit className="w-4 h-4" />
               Modifica
