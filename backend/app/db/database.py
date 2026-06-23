@@ -192,6 +192,11 @@ class WarehouseDataset(Base):
     source_query = Column(Text, nullable=False)
     columns = Column(JSON, default=[])                        # [{name, dtype}] - per estensione/semantic layer
     row_count = Column(Integer, default=0)
+    # ETL incrementale
+    sync_mode = Column(String(16), default="full")            # full | incremental
+    watermark_column = Column(String(255))                    # colonna per il delta (es. updated_at, id)
+    last_watermark = Column(String(255))                      # ultimo valore caricato (stringa, ricoercizzato)
+    key_columns = Column(JSON, default=[])                    # chiavi per il merge (step successivo)
     status = Column(String(50), default="ready")              # ready | syncing | error
     last_error = Column(Text)
     last_sync_at = Column(DateTime)

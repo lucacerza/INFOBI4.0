@@ -13,7 +13,7 @@ import polars as pl
 import pyarrow as pa
 
 from app.core.config import settings
-from app.services.query_engine import QueryEngine
+from app.services.query_engine import QueryEngine, _sanitize_column_name
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +54,105 @@ def materialize_df(table_name: str, df: pl.DataFrame) -> Tuple[int, List[Dict[st
 def materialize_from_source(
     table_name: str, db_type: str, config: Dict[str, Any], query: str
 ) -> Tuple[int, List[Dict[str, str]]]:
-    """Estrae il risultato di `query` dalla sorgente e lo materializza nel warehouse."""
+    """Estrae il risultato di `query` dalla sorgente e lo materializza nel warehouse (full refresh)."""
     df = QueryEngine._execute_df_with_params_sync(db_type, config, query, {})
     return materialize_df(table_name, df)
+
+
+def table_exists(table_name: str) -> bool:
+    table = sanitize_table(table_name)
+    con = duckdb.connect(str(warehouse_path()))
+    try:
+        row = con.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_name = ?", [table]
+        ).fetchone()
+        return row is not None
+    finally:
+        con.close()
+
+
+def _append_df(table_name: str, df: pl.DataFrame) -> int:
+    """Aggiunge le righe di df alla tabella esistente. Ritorna il totale righe."""
+    table = sanitize_table(table_name)
+    con = duckdb.connect(str(warehouse_path()))
+    try:
+        con.register("incoming", df.to_arrow())
+        con.execute(f'INSERT INTO "{table}" SELECT * FROM incoming')
+        con.unregister("incoming")
+        return int(con.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0])
+    finally:
+        con.close()
+
+
+def _coerce(value: Optional[str]) -> Any:
+    """Ricoercizza il watermark salvato (stringa) al tipo plausibile per il confronto SQL."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        pass
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return value  # es. data ISO: il confronto lessicografico è corretto
+
+
+def materialize_incremental(
+    table_name: str,
+    db_type: str,
+    config: Dict[str, Any],
+    query: str,
+    watermark_column: str,
+    last_watermark: Optional[str],
+) -> Dict[str, Any]:
+    """
+    Carico incrementale (append) basato su watermark.
+    - Primo carico (o tabella assente): full create + watermark iniziale.
+    - Carichi successivi: estrae solo `watermark_column > last_watermark` e appende.
+    Ritorna {rows_added, total_rows, watermark, columns, mode}.
+    """
+    wm_col = _sanitize_column_name(watermark_column)
+    base = f"SELECT * FROM ({query}) AS _src"
+
+    first_load = last_watermark is None or not table_exists(table_name)
+
+    if first_load:
+        df = QueryEngine._execute_df_with_params_sync(db_type, config, base, {})
+        total, columns = materialize_df(table_name, df)
+        rows_added = total
+        mode = "initial"
+    else:
+        delta_sql = f'{base} WHERE "{wm_col}" > :wm'
+        df = QueryEngine._execute_df_with_params_sync(db_type, config, delta_sql, {"wm": _coerce(last_watermark)})
+        rows_added = df.height
+        total = _append_df(table_name, df) if rows_added else _count(table_name)
+        columns = columns_of(df)
+        mode = "append"
+
+    # avanza il watermark al massimo tra le righe appena caricate
+    new_watermark = last_watermark
+    if df.height and wm_col in df.columns:
+        col_max = df[wm_col].max()
+        if col_max is not None:
+            new_watermark = str(col_max)
+
+    return {
+        "rows_added": rows_added,
+        "total_rows": total,
+        "watermark": new_watermark,
+        "columns": columns,
+        "mode": mode,
+    }
+
+
+def _count(table_name: str) -> int:
+    table = sanitize_table(table_name)
+    con = duckdb.connect(str(warehouse_path()))
+    try:
+        return int(con.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0])
+    finally:
+        con.close()
 
 
 def query_arrow(sql: str, params: Optional[list] = None) -> pa.Table:
