@@ -16,7 +16,7 @@ import TreeDataGrid from '../components/TreeDataGrid';
 import BiGridConfig from '../components/BiGridConfig';
 import {
   ArrowLeft, Download, Settings, Loader2,
-  ChevronRight, Save, LayoutGrid, Edit, Sparkles
+  ChevronRight, Save, LayoutGrid, Edit, Sparkles, Lightbulb, X
 } from 'lucide-react';
 
 interface ColumnInfo {
@@ -64,6 +64,8 @@ export default function ReportPivotPage() {
   const [aiQuestion, setAiQuestion] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
   const [aiMsg, setAiMsg] = useState<{ type: 'info' | 'error'; text: string } | null>(null);
+  const [insight, setInsight] = useState<string | null>(null);
+  const [insightBusy, setInsightBusy] = useState(false);
 
   // Load report and schema
   useEffect(() => {
@@ -160,6 +162,39 @@ export default function ReportPivotPage() {
     });
   };
 
+  // Genera una narrazione AI dei dati aggregati della vista corrente
+  const handleInsight = async () => {
+    if (!pivotConfig.values.length) {
+      setAiMsg({ type: 'error', text: 'Aggiungi almeno una misura per generare insight' });
+      return;
+    }
+    setInsightBusy(true);
+    setInsight(null);
+    try {
+      const filters: Record<string, any> = {};
+      (pivotConfig.filters || []).forEach(f => {
+        filters[f.field] = Array.isArray(f.value)
+          ? { type: f.type, values: f.value }
+          : { type: f.type, value: f.value };
+      });
+      const res = await apiFetch(`/api/ai/reports/${reportId}/insights`, {
+        method: 'POST',
+        body: JSON.stringify({
+          group_by: pivotConfig.rows,
+          metrics: pivotConfig.values.map(v => ({ name: v.name, field: v.field, aggregation: v.aggregation })),
+          filters,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Errore AI');
+      setInsight(data.narrative || 'Nessuna osservazione rilevante.');
+    } catch (err: any) {
+      setAiMsg({ type: 'error', text: err.message });
+    } finally {
+      setInsightBusy(false);
+    }
+  };
+
   const handleAsk = async (e: React.FormEvent) => {
     e.preventDefault();
     const q = aiQuestion.trim();
@@ -212,6 +247,17 @@ export default function ReportPivotPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Insight AI */}
+          <button
+            onClick={handleInsight}
+            disabled={insightBusy}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-ground text-muted hover:bg-line transition disabled:opacity-50"
+            title="Genera una narrazione AI dei dati della vista corrente"
+          >
+            {insightBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lightbulb className="w-4 h-4" />}
+            Insight
+          </button>
+
           {/* Toggle Builder */}
           <button
             onClick={() => setShowBuilder(!showBuilder)}
@@ -263,6 +309,17 @@ export default function ReportPivotPage() {
           Chiedi
         </button>
       </form>
+
+      {/* Pannello narrazione AI */}
+      {insight && (
+        <div className="bg-accent-soft border-b border-accent px-4 py-3 flex items-start gap-3 flex-shrink-0">
+          <Lightbulb className="w-4 h-4 text-accent-strong mt-0.5 shrink-0" />
+          <p className="flex-1 text-sm text-ink whitespace-pre-line">{insight}</p>
+          <button onClick={() => setInsight(null)} className="p-1 hover:bg-surface rounded text-muted shrink-0">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       <div className="flex-1 flex overflow-hidden">
         {/* Compact Config Sidebar */}

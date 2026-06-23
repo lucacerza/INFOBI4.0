@@ -80,7 +80,7 @@
 - [ ] Guardrail & governance AI: whitelist metriche/colonne certificate; logging traduzioni NL→query; feedback loop utente (blocca allucinazioni e SQLi by-design)
 - [x] **8.2 — NL → Pivot (tool-use, config validata)**: `services/nl_pivot.py` — grounding dal semantic layer (`ColumnMetadata`, fallback schema), tool `build_pivot` (group_by/split_by/metrics/filters) forzato via `tool_choice`, **guardrail anti-allucinazione** (risolve nome tecnico o business; rifiuta colonne inesistenti); output nella forma `EnhancedPivotRequest`. Endpoint `POST /api/ai/reports/{id}/ask` → `{config, explanation}` (422 su colonna inventata, 503 se AI down). UI: barra "Chiedi all'AI" nel ReportPivotPage che applica la config a `setPivotConfig` (motore pivot invariato). Test `test_nl_pivot.py` (9: mapping, nomi business, guardrail, filtri, endpoint e2e con MockLLM).
 - [ ] NL → generazione Dashboard (JSON widget)
-- [ ] Auto-insight / narrazione su dati aggregati
+- [x] **8.3 — Auto-insight / narrazione**: `services/insights.py` esegue l'aggregazione (motore pivot, via resolver → warehouse o live), costruisce un "digest" compatto dei dati reali (nomi business + unità dal semantic layer) e l'LLM lo narra (3-5 osservazioni, solo numeri forniti). Endpoint `POST /api/ai/reports/{id}/insights` (group_by/metrics/filters o default del report). UI: bottone "Insight" + pannello narrazione nel ReportPivotPage. Test `test_insights.py` (4: digest labels/unità/arrotondamento/cap, endpoint e2e, no-misure→400).
 - [ ] Anomaly detection + alert
 - [ ] Forecasting (time-series)
 - [ ] Chatbot sul catalogo (RAG sui metadati)
