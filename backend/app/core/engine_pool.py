@@ -36,6 +36,9 @@ def get_engine(db_type: str, config: Dict[str, Any]) -> Engine:
             connect_args={'check_same_thread': False},
             echo=False,
         )
+    elif db_type == 'duckdb':
+        # Warehouse colonnare embedded (file). NullPool: ogni query apre/chiude la connessione.
+        engine = create_engine(url, poolclass=NullPool, echo=False)
     else:
         # Configurazione ottimizzata per evitare il Cold Start
         engine = create_engine(
@@ -56,6 +59,10 @@ def _build_sqlalchemy_url(db_type: str, config: Dict[str, Any]) -> str:
     if db_type == 'sqlite':
         # 'database' è il path del file (usare slash). Sorgente locale per demo/import.
         return f"sqlite:///{config['database']}"
+
+    if db_type == 'duckdb':
+        # Warehouse: 'database' è il path del file .duckdb
+        return f"duckdb:///{config['database']}"
 
     user = urllib.parse.quote_plus(config['username'])
     password = urllib.parse.quote_plus(config['password'])

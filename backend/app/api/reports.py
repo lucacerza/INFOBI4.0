@@ -11,6 +11,7 @@ from app.core.deps import get_current_user, get_current_admin, get_current_super
 from app.core.security import decrypt_password
 from app.models.schemas import ReportCreate, ReportUpdate, ReportResponse, GridRequest, PivotDrillRequest
 from app.services.query_engine import QueryEngine, query_engine
+from app.services.report_source import resolve_report_source
 from app.services.rls import get_rls_filters, apply_rls_to_filtermodel
 from app.services.sql_validation import validate_select_query
 from app.services.report_versions import save_version, apply_snapshot
@@ -423,43 +424,29 @@ async def execute_grid_query(
     if not report:
         raise HTTPException(status_code=404, detail='Report not found')
 
-    # 2. Fetch Connection
-    conn_result = await db.execute(select(Connection).where(Connection.id == report.connection_id))
-    connection = conn_result.scalar_one_or_none()
-    if not connection:
-        raise HTTPException(status_code=400, detail='Connection not found')
-    
-    # 3. Execute
+    # 2. Risolvi sorgente (warehouse mart o connessione live) ed esegui
     try:
-        config = {
-            'host': connection.host,
-            'port': connection.port,
-            'database': connection.database,
-            'username': connection.username,
-            'password': decrypt_password(connection.password_encrypted),
-            'ssl_enabled': connection.ssl_enabled
-        }
-
-        # Ensure pool is warm before query (eliminates cold start)
-        QueryEngine.ensure_pool_warm(connection.db_type, config)
+        db_type, config, base_query = await resolve_report_source(db, report)
 
         # RLS: inietta i filtri obbligatori nel filterModel (superuser bypassa)
         rls = await get_rls_filters(db, user, report_id)
         request.filterModel = apply_rls_to_filtermodel(request.filterModel, rls)
 
         rows, total, elapsed = await query_engine.execute_grid_query(
-            connection.db_type,
+            db_type,
             config,
-            report.query,  # Base query
+            base_query,
             request
         )
-        
+
         return {
             'rows': rows,
             'lastRow': total,
             'elapsed_ms': elapsed
         }
 
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception(f"Grid query failed for report {report_id}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -480,46 +467,32 @@ async def execute_pivot_drill(
     if not report:
         raise HTTPException(status_code=404, detail='Report not found')
 
-    # 2. Fetch Connection
-    conn_result = await db.execute(select(Connection).where(Connection.id == report.connection_id))
-    connection = conn_result.scalar_one_or_none()
-    if not connection:
-        raise HTTPException(status_code=400, detail='Connection not found')
-    
-    # 3. Execute
+    # 2. Risolvi sorgente (warehouse mart o connessione live) ed esegui
     try:
-        config = {
-            'host': connection.host,
-            'port': connection.port,
-            'database': connection.database,
-            'username': connection.username,
-            'password': decrypt_password(connection.password_encrypted),
-            'ssl_enabled': connection.ssl_enabled
-        }
-
-        # Ensure pool is warm before query (eliminates cold start)
-        QueryEngine.ensure_pool_warm(connection.db_type, config)
+        db_type, config, base_query = await resolve_report_source(db, report)
 
         # RLS: inietta i filtri obbligatori nel filterModel (superuser bypassa)
         rls = await get_rls_filters(db, user, report_id)
         request.filterModel = apply_rls_to_filtermodel(request.filterModel, rls)
 
         rows, total, elapsed_query = await query_engine.execute_pivot_drill(
-            connection.db_type,
+            db_type,
             config,
-            report.query,  # Base query
+            base_query,
             request
         )
-        
+
         total_time = (time.perf_counter() - start_total) * 1000
         logger.info(f"⚡ PIVOT DRILL Report {report_id}: {total} rows. Query={elapsed_query:.1f}ms, Total={total_time:.1f}ms")
-        
+
         return {
             'rows': rows,
             'count': total,
             'elapsed_ms': elapsed_query
         }
-        
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception(f"PIVOT DRILL Error Report {report_id}")
         raise HTTPException(status_code=500, detail=str(e))

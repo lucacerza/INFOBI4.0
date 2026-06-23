@@ -72,7 +72,7 @@
 - [ ] DuckDB + Parquet, architettura medallion (bronze/silver/gold)
 - [ ] ETL incrementale schedulato (APScheduler, watermark `updated_at`)
 - [ ] Semantic layer (misure/dimensioni riusabili)
-- [ ] Report/Dashboard "warehouse-backed" (interrogano DuckDB, non l'OLTP)
+- [x] **Step B — Report "warehouse-backed"**: flag `Report.warehouse_backed`; resolver unico `services/report_source.py` che sceglie warehouse-mart vs sorgente live (fallback automatico se il mart non è pronto); routing applicato a tutti gli endpoint dati (grid, pivot-drill, pivot+split, schema, distinct) **senza toccare il motore pivot** (DuckDB = dialetto PostgreSQL: `"col"`, ROLLUP, LIMIT/OFFSET, `:param` via duckdb_engine); DuckDB integrato in `engine_pool` (NullPool); UI: pannello Warehouse nel ReportViewer (superuser) per materializzare/aggiornare e attivare le query sul warehouse. Test: `test_warehouse_backed.py` (2 e2e, verifica snapshot + fallback).
 - [ ] Data lineage / freschezza per widget
 
 ## Fase 8 — AI (Claude)

@@ -101,6 +101,7 @@ class ReportUpdate(BaseModel):
     column_labels: Optional[Dict[str, str]] = None
     view_config: Optional[Dict[str, Any]] = None
     layout: Optional[Dict[str, Any]] = None
+    warehouse_backed: Optional[bool] = None
     cache_enabled: Optional[bool] = None
     cache_ttl: Optional[int] = None
 
@@ -119,6 +120,7 @@ class ReportResponse(BaseModel):
     column_labels: Optional[Dict[str, str]] = {}
     view_config: Optional[Dict[str, Any]] = {}
     layout: Optional[Dict[str, Any]] = {}
+    warehouse_backed: Optional[bool] = False
     cache_enabled: bool
     cache_ttl: int
     visibility: Optional[str] = "private"

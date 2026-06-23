@@ -17,6 +17,7 @@ from app.db.database import get_db, Report, Connection
 from app.core.deps import get_current_user
 from app.core.security import decrypt_password
 from app.services.query_engine import QueryEngine, _build_safe_filter_clause, _sanitize_column_name
+from app.services.report_source import resolve_report_source
 from app.services.rls import get_rls_filters, merge_rls
 from app.core.limits import clamp_rows
 from app.core.engine_pool import get_engine
@@ -112,33 +113,23 @@ async def execute_pivot(
             logger.info(f"Pivot cache HIT for report {report_id} in {elapsed:.1f}ms")
     
     if not cache_hit:
-        # Build config and ensure pool is warm
-        config = {
-            "host": connection.host,
-            "port": connection.port,
-            "database": connection.database,
-            "username": connection.username,
-            "password": decrypt_password(connection.password_encrypted),
-            "ssl_enabled": connection.ssl_enabled
-        }
-
-        # Ensure pool is warm before query (eliminates cold start)
-        QueryEngine.ensure_pool_warm(connection.db_type, config)
+        # Risolvi sorgente: warehouse mart materializzato o connessione live
+        db_type, src_config, base_query = await resolve_report_source(db, report, connection)
 
         # Merge default metrics with request metrics
         metrics = [m.model_dump() for m in request.metrics]
         if not metrics and report.default_metrics:
             metrics = report.default_metrics
-        
+
         group_by = request.group_by or report.default_group_by or []
         split_by = request.split_by or []
 
         # Execute query with split_by support
         if split_by and len(split_by) > 0:
             arrow_bytes, row_count = await execute_pivot_with_split(
-                connection.db_type,
-                config,
-                report.query,
+                db_type,
+                src_config,
+                base_query,
                 group_by,
                 split_by,
                 metrics,
@@ -149,9 +140,9 @@ async def execute_pivot(
         else:
             # Standard pivot without split
             arrow_bytes, row_count, query_time = await QueryEngine.execute_pivot(
-                connection.db_type,
-                config,
-                report.query,
+                db_type,
+                src_config,
+                base_query,
                 group_by,
                 metrics,
                 effective_filters,
@@ -384,27 +375,17 @@ async def get_pivot_schema(
     report, connection = row
     
     try:
-        config = {
-            "host": connection.host,
-            "port": connection.port,
-            "database": connection.database,
-            "username": connection.username,
-            "password": decrypt_password(connection.password_encrypted),
-            "ssl_enabled": connection.ssl_enabled
-        }
-
-        # Ensure pool is warm before query (eliminates cold start)
-        QueryEngine.ensure_pool_warm(connection.db_type, config)
+        db_type, config, base_query = await resolve_report_source(db, report, connection)
 
         # Get just 1 row to infer schema
-        if connection.db_type == "mssql":
-            limit_query = f"SELECT TOP 1 * FROM ({report.query}) AS schema_query"
+        if db_type == "mssql":
+            limit_query = f"SELECT TOP 1 * FROM ({base_query}) AS schema_query"
         else:
-            limit_query = f"SELECT * FROM ({report.query}) AS schema_query LIMIT 1"
-        
+            limit_query = f"SELECT * FROM ({base_query}) AS schema_query LIMIT 1"
+
         logger.info(f"Executing schema query for report {report_id}")
-        
-        arrow_table = QueryEngine._execute_query_sync(connection.db_type, config, limit_query)
+
+        arrow_table = QueryEngine._execute_query_sync(db_type, config, limit_query)
         
         columns = []
         for field in arrow_table.schema:
@@ -475,19 +456,11 @@ async def get_distinct_values(
         raise HTTPException(status_code=400, detail="Invalid column name")
 
     try:
-        config = {
-            "host": connection.host,
-            "port": connection.port,
-            "database": connection.database,
-            "username": connection.username,
-            "password": decrypt_password(connection.password_encrypted),
-            "ssl_enabled": connection.ssl_enabled
-        }
+        db_type, config, base_query = await resolve_report_source(db, report, connection)
 
         # Build distinct query (search value SEMPRE come bound param — SQL injection safe)
-        base_query = report.query
         safe_limit = int(limit)
-        is_mssql = connection.db_type == "mssql"
+        is_mssql = db_type == "mssql"
         col_ref = f"[{column}]" if is_mssql else f'"{column}"'
         params: dict = {}
 
@@ -527,11 +500,8 @@ async def get_distinct_values(
                 LIMIT {safe_limit}
             """
 
-        # Ensure pool is warm
-        QueryEngine.ensure_pool_warm(connection.db_type, config)
-
-        # Execute query (parametrizzata)
-        arrow_table = QueryEngine._execute_arrow_with_params_sync(connection.db_type, config, distinct_query, params)
+        # Execute query (parametrizzata). Il pool è già scaldato dal resolver per la sorgente live.
+        arrow_table = QueryEngine._execute_arrow_with_params_sync(db_type, config, distinct_query, params)
 
         # Convert to list of values
         values = arrow_table.column("value").to_pylist()

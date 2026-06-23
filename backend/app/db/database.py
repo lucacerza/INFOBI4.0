@@ -128,6 +128,11 @@ class Report(Base):
     view_config = Column(JSON, default={})
     layout = Column(JSON, default={})
     
+    # Warehouse: se True le query (pivot/grid/schema/distinct) girano sul mart
+    # materializzato in DuckDB invece che sulla sorgente live (fallback automatico
+    # alla sorgente se il dataset non è ancora materializzato).
+    warehouse_backed = Column(Boolean, default=False)
+
     # Cache settings
     cache_enabled = Column(Boolean, default=True)
     cache_ttl = Column(Integer, default=3600)

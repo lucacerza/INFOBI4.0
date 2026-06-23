@@ -7,7 +7,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import {
   ArrowLeft, Download, RefreshCw, Loader2, FileSpreadsheet,
-  FileText, Clock, Database, Zap, Edit, LayoutGrid
+  FileText, Clock, Database, Zap, Edit, LayoutGrid, Boxes
 } from 'lucide-react';
 import { apiFetch } from '../services/apiClient';
 
@@ -26,13 +26,19 @@ export default function ReportViewerPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
+  const isSuperuser = user?.role === 'superuser';
   const reportId = parseInt(id || '0');
-  
+
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState({ rows: 0, time: 0, cached: false });
+
+  // Warehouse (DuckDB) state
+  const [whDataset, setWhDataset] = useState<any | null>(null);
+  const [whBacked, setWhBacked] = useState(false);
+  const [whBusy, setWhBusy] = useState(false);
 
   // Load on mount
   useEffect(() => {
@@ -51,12 +57,57 @@ export default function ReportViewerPage() {
       if (!reportRes.ok) throw new Error('Report non trovato');
       const reportData = await reportRes.json();
       setReport(reportData);
+      setWhBacked(!!reportData.warehouse_backed);
+
+      // Stato warehouse (solo superuser può gestirlo)
+      if (isSuperuser) {
+        const whRes = await apiFetch('/api/warehouse');
+        if (whRes.ok) {
+          const datasets = await whRes.json();
+          setWhDataset(datasets.find((d: any) => d.source_report_id === reportId) || null);
+        }
+      }
 
     } catch (err: any) {
       console.error('Load error:', err);
       setError(err.message || 'Errore sconosciuto');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Materializza / aggiorna il mart nel warehouse
+  const handleMaterialize = async () => {
+    setWhBusy(true);
+    try {
+      const res = await apiFetch('/api/warehouse/from-report', {
+        method: 'POST',
+        body: JSON.stringify({ report_id: reportId }),
+      });
+      if (!res.ok) throw new Error((await res.json()).detail || 'Errore');
+      setWhDataset(await res.json());
+    } catch (err: any) {
+      alert(`Materializzazione fallita: ${err.message}`);
+    } finally {
+      setWhBusy(false);
+    }
+  };
+
+  // Attiva/disattiva l'uso del warehouse per le query del report
+  const handleToggleBacked = async () => {
+    const next = !whBacked;
+    setWhBusy(true);
+    try {
+      const res = await apiFetch(`/api/reports/${reportId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ warehouse_backed: next }),
+      });
+      if (!res.ok) throw new Error((await res.json()).detail || 'Errore');
+      setWhBacked(next);
+    } catch (err: any) {
+      alert(`Aggiornamento fallito: ${err.message}`);
+    } finally {
+      setWhBusy(false);
     }
   };
 
@@ -209,6 +260,59 @@ export default function ReportViewerPage() {
             </div>
           </div>
           
+          {/* Warehouse (DuckDB) — solo superuser */}
+          {isSuperuser && (
+            <div className="text-left bg-surface-2 border border-line rounded-xl p-4 mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Boxes className="w-4 h-4 text-accent" />
+                  <span className="font-semibold text-ink text-sm">Warehouse</span>
+                </div>
+                {whDataset ? (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-accent-soft text-accent-strong num">
+                    {whDataset.row_count?.toLocaleString('it-IT')} righe
+                  </span>
+                ) : (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-ground text-muted">
+                    non materializzato
+                  </span>
+                )}
+              </div>
+
+              <p className="text-xs text-muted mb-3">
+                {whDataset?.last_sync_at
+                  ? `Ultima sincronizzazione: ${new Date(whDataset.last_sync_at).toLocaleString('it-IT')}`
+                  : 'Crea una copia colonnare del report per query più veloci e indipendenti dalla sorgente.'}
+              </p>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={handleMaterialize}
+                  disabled={whBusy}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-sm font-medium disabled:opacity-50 hover:brightness-110"
+                  style={{ background: 'linear-gradient(100deg,#7B6CF5,#6A8DF5)' }}
+                >
+                  {whBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Boxes className="w-4 h-4" />}
+                  {whDataset ? 'Aggiorna mart' : 'Materializza'}
+                </button>
+
+                <button
+                  onClick={handleToggleBacked}
+                  disabled={whBusy || !whDataset}
+                  title={!whDataset ? 'Materializza prima il report' : ''}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border transition disabled:opacity-50 ${
+                    whBacked
+                      ? 'bg-accent-soft text-accent-strong border-accent'
+                      : 'text-muted border-line hover:bg-ground'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${whBacked ? 'bg-accent' : 'bg-muted'}`} />
+                  {whBacked ? 'Query sul warehouse: attivo' : 'Interroga il warehouse'}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-center gap-4 pt-6 border-t">
             <button
               onClick={handleRefresh}
