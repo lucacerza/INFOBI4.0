@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     # Datawarehouse (DuckDB)
     WAREHOUSE_DIR: str = "./data/warehouse"
 
+    # Semantic layer: parole-indizio per riconoscere le colonne temporali
+    # nell'autodetect. È solo un SUGGERIMENTO (ogni colonna resta correggibile
+    # a mano); esternalizzato qui per estenderlo senza toccare il codice.
+    # Override via .env con JSON: SEMANTIC_TIME_HINTS=["date","anno","fiscal_year"]
+    SEMANTIC_TIME_HINTS: List[str] = [
+        "date", "data", "anno", "year", "mese", "month",
+        "giorno", "day", "periodo", "trimestre", "quarter", "settimana", "week",
+    ]
+
     # Backup automatico del DB applicativo (SQLite)
     BACKUP_ENABLED: bool = True
     BACKUP_DIR: str = "./data/backups"

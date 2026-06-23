@@ -31,6 +31,16 @@ def test_infer_roles():
     assert infer("regione", "VARCHAR") == ("string", "dimension", "none")
 
 
+def test_time_hints_are_configurable(monkeypatch):
+    """Gli indizi temporali sono esternalizzati in config (non hardcodati)."""
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "SEMANTIC_TIME_HINTS", ["fiscalyear"])
+    # "anno" non è più un indizio -> intero generico diventa misura
+    assert infer("anno", "INTEGER") == ("number", "measure", "sum")
+    # il nuovo indizio configurato funziona
+    assert infer("fiscalyear", "INTEGER") == ("number", "time", "none")
+
+
 # ---------- E2E ----------
 def _make_source(tmp_path):
     src = tmp_path / "cat.db"

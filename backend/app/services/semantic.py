@@ -10,19 +10,13 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.database import Report, ColumnMetadata
 from app.services.query_engine import QueryEngine
 from app.services.report_source import resolve_report_source
 from app.services.schema_catalog import semantic_type
 
 logger = logging.getLogger(__name__)
-
-# Indizi nel nome colonna che suggeriscono una dimensione temporale
-# (anche quando il tipo fisico è intero/stringa, es. "Anno", "Mese").
-_TIME_NAME_HINTS = (
-    "date", "data", "anno", "year", "mese", "month",
-    "giorno", "day", "periodo", "trimestre", "quarter", "settimana", "week",
-)
 
 
 def infer(name: str, raw_type: str) -> Tuple[str, str, str]:
@@ -35,7 +29,7 @@ def infer(name: str, raw_type: str) -> Tuple[str, str, str]:
     """
     sem = semantic_type(raw_type)
     name_l = (name or "").lower()
-    is_time_name = any(h in name_l for h in _TIME_NAME_HINTS)
+    is_time_name = any((h or "").lower() in name_l for h in settings.SEMANTIC_TIME_HINTS)
 
     if sem == "date" or is_time_name:
         return sem, "time", "none"
