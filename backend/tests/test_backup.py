@@ -44,3 +44,53 @@ def test_backup_creates_file_and_rotates(tmp_path, monkeypatch):
 def test_backup_skips_when_not_sqlite(monkeypatch):
     monkeypatch.setattr(settings, "DATABASE_URL", "postgresql://user@host/db")
     assert backup_mod.backup_database(timestamp="x") is None
+
+
+def test_warehouse_backup_and_rotation(tmp_path, monkeypatch):
+    import duckdb
+    import polars as pl
+    from app.services import warehouse
+
+    monkeypatch.setattr(settings, "WAREHOUSE_DIR", str(tmp_path / "wh"))
+    monkeypatch.setattr(settings, "BACKUP_DIR", str(tmp_path / "backups"))
+    monkeypatch.setattr(settings, "BACKUP_KEEP", 3)
+
+    warehouse.materialize_df("mart_x", pl.DataFrame({"a": [1, 2, 3]}))
+
+    for i in range(5):
+        dest = backup_mod.backup_warehouse(timestamp=f"2026010100000{i}")
+        assert dest is not None and dest.exists()
+
+    backups = sorted((tmp_path / "backups").glob("warehouse_*.duckdb"))
+    assert len(backups) == 3                       # rotazione: solo gli ultimi 3
+    # il backup è un DuckDB valido e contiene i dati
+    con = duckdb.connect(str(backups[-1]))
+    assert con.execute('SELECT COUNT(*) FROM "mart_x"').fetchone()[0] == 3
+    con.close()
+
+
+def test_warehouse_backup_skips_when_absent(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "WAREHOUSE_DIR", str(tmp_path / "empty_wh"))
+    assert backup_mod.backup_warehouse(timestamp="x") is None
+
+
+def test_run_backups_runs_both(tmp_path, monkeypatch):
+    import sqlite3
+    import polars as pl
+    from app.services import warehouse
+
+    src_db = tmp_path / "source.db"
+    conn = sqlite3.connect(str(src_db))
+    conn.execute("CREATE TABLE t (id INTEGER)")
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(settings, "DATABASE_URL", f"sqlite:///{src_db.as_posix()}")
+    monkeypatch.setattr(settings, "WAREHOUSE_DIR", str(tmp_path / "wh"))
+    monkeypatch.setattr(settings, "BACKUP_DIR", str(tmp_path / "bk"))
+    warehouse.materialize_df("mart_y", pl.DataFrame({"a": [1]}))
+
+    created = backup_mod.run_backups(timestamp="20260101_000000")
+    names = [p.name for p in created]
+    assert any(n.startswith("infobi_") for n in names)
+    assert any(n.startswith("warehouse_") for n in names)

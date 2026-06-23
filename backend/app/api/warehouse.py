@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from app.db.database import get_db, Report, Connection, WarehouseDataset
 from app.core.deps import get_current_superuser
 from app.core.security import decrypt_password
-from app.services import warehouse
+from app.services import warehouse, backup
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +175,18 @@ async def rebuild_all(
         except HTTPException as e:
             results.append({"id": ds.id, "name": ds.name, "status": "error", "detail": e.detail})
     return {"rebuilt": len(results), "datasets": results}
+
+
+@router.post("/backup")
+async def backup_warehouse_now(
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_superuser),
+):
+    """Crea subito un backup del file warehouse (SUPERUSER)."""
+    dest = await run_in_threadpool(backup.backup_warehouse)
+    if dest is None:
+        raise HTTPException(status_code=404, detail="Warehouse non ancora creato: niente da copiare")
+    return {"backup": dest.name}
 
 
 @router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)

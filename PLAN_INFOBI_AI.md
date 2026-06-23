@@ -73,6 +73,7 @@
 - [ ] ETL incrementale schedulato (APScheduler, watermark `updated_at`)
 - [ ] Semantic layer (misure/dimensioni riusabili)
 - [x] **Step B — Report "warehouse-backed"**: flag `Report.warehouse_backed`; resolver unico `services/report_source.py` che sceglie warehouse-mart vs sorgente live (fallback automatico se il mart non è pronto); routing applicato a tutti gli endpoint dati (grid, pivot-drill, pivot+split, schema, distinct) **senza toccare il motore pivot** (DuckDB = dialetto PostgreSQL: `"col"`, ROLLUP, LIMIT/OFFSET, `:param` via duckdb_engine); DuckDB integrato in `engine_pool` (NullPool); UI: pannello Warehouse nel ReportViewer (superuser) per materializzare/aggiornare e attivare le query sul warehouse. Test: `test_warehouse_backed.py` (2 e2e, verifica snapshot + fallback).
+- [x] **Backup automatico del warehouse**: `backup_warehouse` (CHECKPOINT + copia file `.duckdb`) e `run_backups` (DB app + warehouse) nello scheduler; rotazione per pattern; endpoint manuale `POST /api/warehouse/backup` (superuser). Test in `test_backup.py` (+3). Recupero: cancella il file e `rebuild-all`, oppure ripristina la copia.
 - [ ] Data lineage / freschezza per widget
 
 ## Fase 8 — AI (Claude)

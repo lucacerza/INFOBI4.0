@@ -51,11 +51,11 @@ async def lifespan(app: FastAPI):
     scheduler = None
     if settings.BACKUP_ENABLED:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
-        from app.services.backup import backup_database
+        from app.services.backup import run_backups
         scheduler = AsyncIOScheduler()
-        scheduler.add_job(backup_database, "interval", hours=settings.BACKUP_INTERVAL_HOURS, id="db_backup")
+        scheduler.add_job(run_backups, "interval", hours=settings.BACKUP_INTERVAL_HOURS, id="db_backup")
         scheduler.start()
-        logger.info(f"🗄️  Backup automatico DB attivo (ogni {settings.BACKUP_INTERVAL_HOURS}h, conserva {settings.BACKUP_KEEP})")
+        logger.info(f"🗄️  Backup automatico (DB + warehouse) attivo (ogni {settings.BACKUP_INTERVAL_HOURS}h, conserva {settings.BACKUP_KEEP})")
 
     yield
 
