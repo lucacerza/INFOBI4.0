@@ -39,7 +39,10 @@
 - [x] CI (GitHub Actions): job backend (`pytest`) + job frontend (`tsc --noEmit` + `vitest`) ad ogni push/PR. Rimosso `duckdb` (inutilizzato, no wheel py3.12) per far passare l'install.
 
 ## Fase 4 — Design system / UI (qualità estetica)
-> Direzione scelta: **"Studio"** (enterprise chiara, accento indaco) **+ numeri monospaziati** (da "Control Room"). Mockup approvato.
+> **DIREZIONE AGGIORNATA (23/06): "INFOBI Pulse"** — dark premium su mockup `INFOBI Pulse.dc.html`.
+> Palette viola #7B6CF5 / teal #4FE3C1, font Bricolage Grotesque + Instrument Sans + JetBrains Mono.
+> Regola: adottare l'estetica ma costruire **solo elementi funzionanti** (no UI decorativa). Le superfici AI (ask bar, insight, risposta generata, ticker) → fase AI.
+> [x] skin Pulse (token+font, default dark) · [x] shell rail Pulse (nav reale, comprimibile). Da fare: restyle schermate (Report/Sorgenti/Team/Pivot/Esplora) sul linguaggio Pulse.
 - [x] 4.1 Design tokens: variabili CSS light/`.dark` + tema Tailwind semantico (ground/surface/ink/muted/line/accent/pos/neg) + font `num` mono
 - [x] 4.2 Dark mode: themeStore (toggle + persistenza localStorage + preferenza di sistema), init pre-render, toggle in sidebar + test. (Resa visiva piena con 4.3)
 - [x] 4.3 Componenti/pagine allineati ai token (364 sostituzioni su 15 file) + bordo di default su token. Dark mode pieno su tutte le pagine chiare. (FilterBar/BiGridConfig restano col loro tema scuro intenzionale.) Verifica visiva consigliata all'avvio.

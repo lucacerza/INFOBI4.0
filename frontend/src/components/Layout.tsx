@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useThemeStore } from '../stores/themeStore';
@@ -11,136 +11,162 @@ import {
   X,
   Users,
   Sun,
-  Moon
+  Moon,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 /**
- * Menu di navigazione con controllo accessi per ruolo:
- * - superuser: Vede tutto (Connessioni, Report, Dashboard, Utenti)
- * - admin: Vede Report (sola lettura), Dashboard, Utenti
- * - user: Vede solo Dashboard (assegnate)
+ * Shell INFOBI Pulse: rail laterale comprimibile + nav con controllo ruoli.
+ * - superuser: Dashboard, Report, Sorgenti, Team
+ * - admin: Dashboard, Report, Team
+ * - user: solo Dashboard
  */
 const navItems = [
-  { path: '/connections', label: 'Connessioni', icon: Database, roles: ['superuser'] },
-  { path: '/reports', label: 'Report', icon: FileText, roles: ['superuser', 'admin'] },
   { path: '/dashboards', label: 'Dashboard', icon: LayoutDashboard, roles: ['superuser', 'admin', 'user'] },
-  { path: '/users', label: 'Utenti', icon: Users, roles: ['superuser', 'admin'] },
+  { path: '/reports', label: 'Report', icon: FileText, roles: ['superuser', 'admin'] },
+  { path: '/connections', label: 'Sorgenti', icon: Database, roles: ['superuser'] },
+  { path: '/users', label: 'Team', icon: Users, roles: ['superuser', 'admin'] },
 ];
+
+const COLLAPSE_KEY = 'infobi_pulse_collapsed';
+
+function Logo({ showText }: { showText: boolean }) {
+  return (
+    <div className="flex items-center gap-3 min-h-[40px]">
+      <div
+        className="w-9 h-9 flex-none rounded-xl flex items-center justify-center shadow-lg"
+        style={{ background: 'linear-gradient(140deg,#7B6CF5,#4FE3C1)', boxShadow: '0 8px 20px -8px rgba(123,108,245,.7)' }}
+      >
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="3.2" /><path d="M12 3v2.5M12 18.5V21M4.5 12H7M17 12h2.5" />
+        </svg>
+      </div>
+      {showText && (
+        <div className="font-disp font-extrabold tracking-tight whitespace-nowrap leading-none">
+          INFOBI <span style={{ background: 'linear-gradient(90deg,#A99BFF,#4FE3C1)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>Pulse</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Layout() {
   const { user, logout } = useAuthStore();
   const { theme, toggle: toggleTheme } = useThemeStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      const c = localStorage.getItem(COLLAPSE_KEY);
+      if (c !== null) setCollapsed(c === '1');
+    } catch { /* ignore */ }
+  }, []);
+
+  const toggleCollapse = () => {
+    setCollapsed(prev => {
+      const next = !prev;
+      try { localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0'); } catch { /* ignore */ }
+      return next;
+    });
+  };
+
   const userRole = user?.role || 'user';
   const filteredNav = navItems.filter(item => item.roles.includes(userRole));
-  
-  const toggleSidebar = () => {
-    setSidebarOpen(!sidebarOpen);
-  };
-  
-  const closeSidebar = () => {
-    setSidebarOpen(false);
-  };
-  
+  const railW = collapsed ? 72 : 236;
+
   return (
-    <div className="h-screen flex bg-ground">
-      {/* Mobile sidebar backdrop */}
+    <div className="h-screen flex bg-ground text-ink">
+      {/* Backdrop mobile */}
       {sidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-          onClick={closeSidebar}
-        />
+        <div className="fixed inset-0 bg-black/60 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
-      
-      {/* Sidebar */}
-      <aside className={`
-        fixed lg:static inset-y-0 left-0 z-50
-        w-64 bg-slate-900 text-white
-        transform transition-transform duration-200
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-      `}>
-        {/* Logo */}
-        <div className="h-16 flex items-center justify-between px-4 border-b border-slate-700">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center font-bold">
-              I
-            </div>
-            <span className="font-semibold text-lg">INFOBI</span>
-            <span className="text-xs text-slate-400">4.0</span>
-          </div>
-          <button 
-            className="lg:hidden p-1 hover:bg-slate-800 rounded"
-            onClick={closeSidebar}
-          >
+
+      {/* Rail */}
+      <aside
+        className={`fixed lg:static inset-y-0 left-0 z-50 flex flex-col bg-surface border-r border-line
+          transform transition-all duration-200 overflow-hidden
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
+        style={{ width: railW, minWidth: railW }}
+      >
+        <div className="flex items-center justify-between px-3.5 pt-4 pb-5">
+          <Logo showText={!collapsed} />
+          <button className="lg:hidden p-1 hover:bg-ground rounded text-muted" onClick={() => setSidebarOpen(false)} title="Chiudi">
             <X className="w-5 h-5" />
           </button>
         </div>
-        
-        {/* Navigation */}
-        <nav className="p-4 space-y-1">
+
+        <nav className="flex flex-col gap-1 px-2.5">
           {filteredNav.map(item => (
             <NavLink
               key={item.path}
               to={item.path}
-              onClick={closeSidebar}
-              className={({ isActive }) => `
-                flex items-center gap-3 px-3 py-2.5 rounded-lg transition
-                ${isActive 
-                  ? 'bg-blue-500/20 text-blue-400' 
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                }
-              `}
+              onClick={() => setSidebarOpen(false)}
+              title={item.label}
+              className={({ isActive }) =>
+                `flex items-center gap-3 rounded-xl py-2.5 text-sm font-medium transition-colors
+                 ${collapsed ? 'px-0 justify-center' : 'px-3'}
+                 ${isActive ? 'bg-accent-soft text-accent-strong font-semibold' : 'text-muted hover:bg-ground hover:text-ink'}`
+              }
             >
-              <item.icon className="w-5 h-5" />
-              <span>{item.label}</span>
+              <item.icon className="w-[18px] h-[18px] flex-none" />
+              {!collapsed && <span className="flex-1 whitespace-nowrap">{item.label}</span>}
             </NavLink>
           ))}
         </nav>
-        
-        {/* User section */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-700">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center text-sm font-medium">
-              {user?.username?.charAt(0).toUpperCase()}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{user?.username}</p>
-              <p className="text-xs text-slate-400 capitalize">{user?.role}</p>
-            </div>
-          </div>
+
+        {/* Bottom */}
+        <div className="mt-auto flex flex-col gap-1.5 px-2.5 pb-4">
+          <button
+            onClick={toggleCollapse}
+            title={collapsed ? 'Espandi' : 'Comprimi'}
+            className={`hidden lg:flex items-center gap-3 rounded-xl py-2.5 text-sm font-medium text-muted hover:bg-ground hover:text-ink transition-colors ${collapsed ? 'px-0 justify-center' : 'px-3'}`}
+          >
+            {collapsed ? <ChevronRight className="w-[18px] h-[18px]" /> : <ChevronLeft className="w-[18px] h-[18px]" />}
+            {!collapsed && <span className="whitespace-nowrap">Comprimi</span>}
+          </button>
+
           <button
             onClick={toggleTheme}
-            className="w-full flex items-center gap-2 px-3 py-2 mb-1 text-sm text-slate-300 hover:bg-slate-800 rounded-lg transition"
-            title={theme === 'dark' ? 'Passa al tema chiaro' : 'Passa al tema scuro'}
+            title={theme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}
+            className={`flex items-center gap-3 rounded-xl py-2.5 text-sm font-medium text-muted hover:bg-ground hover:text-ink transition-colors ${collapsed ? 'px-0 justify-center' : 'px-3'}`}
           >
-            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            <span>{theme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}</span>
+            {theme === 'dark' ? <Sun className="w-[18px] h-[18px]" /> : <Moon className="w-[18px] h-[18px]" />}
+            {!collapsed && <span className="whitespace-nowrap">{theme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}</span>}
           </button>
-          <button
-            onClick={logout}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 rounded-lg transition"
-          >
-            <LogOut className="w-4 h-4" />
-            <span>Esci</span>
-          </button>
+
+          <div className={`flex items-center gap-2.5 pt-3 mt-1 border-t border-line ${collapsed ? 'justify-center' : ''}`}>
+            <div
+              className="w-[34px] h-[34px] flex-none rounded-full flex items-center justify-center text-white font-bold text-sm"
+              style={{ background: 'linear-gradient(140deg,#7B6CF5,#F571B0)' }}
+            >
+              {user?.username?.charAt(0).toUpperCase()}
+            </div>
+            {!collapsed && (
+              <>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold truncate">{user?.username}</div>
+                  <div className="text-[11px] text-muted capitalize truncate">{user?.role}</div>
+                </div>
+                <button onClick={logout} title="Esci" className="w-[30px] h-[30px] flex-none flex items-center justify-center rounded-lg text-muted hover:bg-ground hover:text-ink transition-colors">
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </aside>
-      
-      {/* Main content */}
+
+      {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top bar */}
-        <header className="h-14 bg-surface border-b border-line flex items-center px-4 gap-4 lg:hidden">
-          <button
-            className="p-2 hover:bg-ground rounded-lg text-ink"
-            onClick={toggleSidebar}
-          >
+        <header className="h-14 bg-surface border-b border-line flex items-center px-4 gap-3 lg:hidden">
+          <button className="p-2 hover:bg-ground rounded-lg text-ink" onClick={() => setSidebarOpen(true)} title="Menu">
             <Menu className="w-5 h-5" />
           </button>
-          <span className="font-semibold text-ink">INFOBI</span>
+          <Logo showText={true} />
         </header>
-        
-        {/* Page content */}
+
         <main className="flex-1 overflow-auto">
           <Outlet />
         </main>
