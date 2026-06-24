@@ -58,7 +58,7 @@
 - [ ] Drill-down con breadcrumb visibile (risalita livelli)
 - [ ] Cross-filtering bidirezionale (click widget → filtra altri)
 - [ ] Snapshot/Export dashboard (PDF/PNG) + delivery schedulata (APScheduler)
-- [ ] Export aggregato/pivot (oggi solo dati raw)
+- [x] **Export aggregato/pivot**: endpoint `POST /api/export/{id}/aggregated?format=csv|xlsx` che riusa il motore pivot (resolver warehouse-aware + RLS + split opzionale) e serializza il risultato aggregato in CSV/XLSX. Test `test_export_aggregated.py` (3). UI da collegare al pulsante export del pivot.
 - [ ] Viste/preferiti personali per utente
 - [x] **Import Excel/CSV → sorgente SQLite**: `services/file_import.py` (parse Polars CSV/XLSX via openpyxl → scrittura SQLite con tipi inferiti, no pandas); endpoint `POST /api/connections/import` (superuser, multipart) che crea connessione + report pronto; UI: pulsante "Importa Excel/CSV" nella pagina Sorgenti → naviga al pivot. Riusa il supporto SQLite-sorgente: pivot/AI/warehouse funzionano a valle. Test `test_import_files.py` (6).
 
