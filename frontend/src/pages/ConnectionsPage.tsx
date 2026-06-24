@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { connectionsApi } from '../services/api';
 import { apiFetch } from '../services/apiClient';
-import { 
-  Database, Plus, Trash2, Edit, Loader2, 
-  Server, TestTube, CheckCircle, XCircle, Info, ArrowLeft
+import {
+  Database, Plus, Trash2, Edit, Loader2,
+  Server, TestTube, CheckCircle, XCircle, Info, ArrowLeft, Upload
 } from 'lucide-react';
 
 interface Connection {
@@ -35,8 +36,13 @@ const GRADIENT_BTN = 'linear-gradient(100deg,#7B6CF5,#6A8DF5)';
 type ViewMode = 'list' | 'create' | 'edit';
 
 export default function ConnectionsPage() {
+  const navigate = useNavigate();
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showImport, setShowImport] = useState(false);
+  const [importName, setImportName] = useState('');
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [testing, setTesting] = useState<number | null>(null);
@@ -55,6 +61,26 @@ export default function ConnectionsPage() {
     ssl_enabled: false
   });
   
+  const handleImport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!importFile || !importName.trim()) return;
+    setImportBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('name', importName.trim());
+      fd.append('file', importFile);
+      const res = await apiFetch('/api/connections/import', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Errore import');
+      // sorgente + report creati: vai direttamente al pivot del report
+      navigate(`/reports/${data.report_id}/pivot`);
+    } catch (err: any) {
+      alert(`Import fallito: ${err.message}`);
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
   useEffect(() => {
     loadConnections();
   }, []);
@@ -208,14 +234,52 @@ export default function ConnectionsPage() {
               {connections.length} {connections.length === 1 ? 'sorgente connessa' : 'sorgenti connesse'}
             </p>
           </div>
-          {connections.length > 0 && (
-            <button onClick={handleCreate}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition hover:brightness-110"
-              style={{ background: GRADIENT_BTN }}>
-              <Plus className="w-4 h-4" /> Nuova connessione
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowImport(v => !v)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-line text-sm font-semibold transition hover:bg-ground">
+              <Upload className="w-4 h-4" /> Importa Excel/CSV
             </button>
-          )}
+            {connections.length > 0 && (
+              <button onClick={handleCreate}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition hover:brightness-110"
+                style={{ background: GRADIENT_BTN }}>
+                <Plus className="w-4 h-4" /> Nuova connessione
+              </button>
+            )}
+          </div>
         </div>
+
+        {showImport && (
+          <form onSubmit={handleImport} className="bg-surface border border-line rounded-2xl p-4 mb-6 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <Upload className="w-4 h-4 text-accent" />
+              <span className="font-semibold text-sm text-ink">Importa un file come sorgente</span>
+            </div>
+            <input
+              value={importName}
+              onChange={e => setImportName(e.target.value)}
+              placeholder="Nome sorgente (es. Vendite 2024)"
+              className="px-3 py-2 text-sm border border-line rounded-xl focus:ring-2 focus:ring-accent focus:border-transparent"
+            />
+            <input
+              type="file"
+              accept=".csv,.tsv,.txt,.xlsx,.xlsm"
+              onChange={e => setImportFile(e.target.files?.[0] || null)}
+              className="text-sm text-muted file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-accent-soft file:text-accent-strong"
+            />
+            <div className="flex items-center gap-2">
+              <button type="submit" disabled={importBusy || !importFile || !importName.trim()}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold disabled:opacity-50 hover:brightness-110"
+                style={{ background: GRADIENT_BTN }}>
+                {importBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                Importa
+              </button>
+              <button type="button" onClick={() => setShowImport(false)}
+                className="px-4 py-2 rounded-xl text-sm text-muted hover:bg-ground">Annulla</button>
+            </div>
+            <p className="text-xs text-muted">Crea una sorgente SQLite locale e un report pronto. Formati: CSV, XLSX.</p>
+          </form>
+        )}
 
         {connections.length === 0 ? (
           <div className="rounded-2xl border border-line bg-surface py-16 text-center">

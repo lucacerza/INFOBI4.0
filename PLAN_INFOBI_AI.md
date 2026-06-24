@@ -60,6 +60,7 @@
 - [ ] Snapshot/Export dashboard (PDF/PNG) + delivery schedulata (APScheduler)
 - [ ] Export aggregato/pivot (oggi solo dati raw)
 - [ ] Viste/preferiti personali per utente
+- [x] **Import Excel/CSV → sorgente SQLite**: `services/file_import.py` (parse Polars CSV/XLSX via openpyxl → scrittura SQLite con tipi inferiti, no pandas); endpoint `POST /api/connections/import` (superuser, multipart) che crea connessione + report pronto; UI: pulsante "Importa Excel/CSV" nella pagina Sorgenti → naviga al pivot. Riusa il supporto SQLite-sorgente: pivot/AI/warehouse funzionano a valle. Test `test_import_files.py` (6).
 
 ## Fase 6 — Funzioni analitiche
 - [ ] Colonne calcolate (espressioni utente → Polars: row-level, aggregate, window)

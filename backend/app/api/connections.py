@@ -1,18 +1,22 @@
 """Database Connections API"""
 import asyncio
 import logging
+import re
+import pathlib
 from concurrent.futures import ThreadPoolExecutor
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from typing import List
 from pydantic import BaseModel
-from app.db.database import get_db, Connection
+from app.db.database import get_db, Connection, Report
 from app.core.config import settings
 from app.core.deps import get_current_user, get_current_admin, get_current_superuser
 from app.core.security import encrypt_password, decrypt_password
 from app.models.schemas import ConnectionCreate, ConnectionUpdate, ConnectionResponse
 from app.services.query_engine import QueryEngine
+from app.services import file_import
 from app.core.engine_pool import get_engine
 
 logger = logging.getLogger(__name__)
@@ -177,6 +181,67 @@ async def create_connection(
     }))
 
     return conn
+
+@router.post("/import", status_code=status.HTTP_201_CREATED)
+async def import_file_connection(
+    name: str = Form(...),
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    user = Depends(get_current_superuser)  # SECURITY: solo superuser importa sorgenti
+):
+    """
+    Importa un file Excel/CSV come sorgente SQLite locale e crea un report pronto.
+    Restituisce gli id di connessione e report creati.
+    """
+    content = await file.read()
+    max_bytes = settings.IMPORT_MAX_MB * 1024 * 1024
+    if len(content) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"File troppo grande (max {settings.IMPORT_MAX_MB} MB)")
+
+    stem = re.sub(r"[^A-Za-z0-9_]+", "_", name).strip("_").lower() or "import"
+    db_path = pathlib.Path(settings.IMPORTS_DIR) / f"{stem}.db"
+
+    try:
+        rows, columns = await run_in_threadpool(
+            file_import.import_file, file.filename or name, content, db_path
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Import file fallito")
+        raise HTTPException(status_code=400, detail=f"Import fallito: {e}")
+
+    # Connessione SQLite verso il file importato
+    conn = Connection(
+        name=name, db_type="sqlite", host="", port=0,
+        database=str(db_path), username="", password_encrypted=encrypt_password(""),
+        ssl_enabled=False,
+    )
+    db.add(conn)
+    await db.commit()
+    await db.refresh(conn)
+
+    # Report pronto all'uso sul file importato
+    report = Report(
+        name=name,
+        description=f"Importato da file ({rows} righe, {len(columns)} colonne)",
+        connection_id=conn.id,
+        query=f"SELECT * FROM {file_import.DEFAULT_TABLE}",
+        created_by=user.id,
+    )
+    db.add(report)
+    await db.commit()
+    await db.refresh(report)
+
+    logger.info("📥 Import '%s': %d righe -> connessione %d, report %d", name, rows, conn.id, report.id)
+    return {
+        "connection_id": conn.id,
+        "report_id": report.id,
+        "name": name,
+        "rows": rows,
+        "columns": columns,
+    }
+
 
 @router.get("/{conn_id}", response_model=ConnectionResponse)
 async def get_connection(
